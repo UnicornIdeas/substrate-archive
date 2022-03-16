@@ -1,20 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
 	// "github.com/itering/substrate-api-rpc/websocket"
-	"github.com/gorilla/websocket"
-	"github.com/itering/substrate-api-rpc/rpc"
+	"go-dictionary/internal/connection"
 )
-
-type wsClient struct {
-	*websocket.Conn
-	currentIndex  int
-	maxIndexes    int
-	receiversList map[int]chan *rpc.JsonRpcResult
-}
 
 // func main() {
 // 	api, _ := gsrpc.NewSubstrateAPI("wss://polkadot.api.onfinality.io/public-ws")
@@ -44,16 +33,12 @@ type wsClient struct {
 
 func main() {
 	endpoint := "wss://polkadot.api.onfinality.io/public-ws"
-	wsclient := InitWSClient(endpoint, 100000)
+	wsClient := connection.WsClient{}
+	wsClient.InitWSClient(endpoint)
 
-	go wsclient.ReadWSMessages()
+	go wsClient.ReadWSMessages()
 
-	for i := 0; i < 100000; i++ {
-		_ = wsclient.GetBlockHash(i)
-		// fmt.Println(hash)
-	}
-	for {
-	}
+	wsClient.GetBlockHashes(100000)
 
 	// v := &rpc.JsonRpcResult{}
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 9429341))
@@ -92,49 +77,3 @@ func main() {
 // 	b, _ := json.Marshal(e.Value)
 // 	fmt.Println(string(b))
 // }
-
-func InitWSClient(endpoint string, maxIndexes int) *wsClient {
-	c, _, err := websocket.DefaultDialer.Dial(endpoint, nil)
-	if err != nil {
-		fmt.Println("dial:", err)
-		return nil
-	}
-	receiversMap := make(map[int]chan *rpc.JsonRpcResult)
-	for i := 0; i < maxIndexes; i++ {
-		responseChan := make(chan *rpc.JsonRpcResult)
-		receiversMap[i] = responseChan
-	}
-	return &wsClient{c, 1, maxIndexes, receiversMap}
-}
-
-func (c *wsClient) ReadWSMessages() {
-	v := &rpc.JsonRpcResult{}
-	for {
-		err := c.ReadJSON(v)
-		if err != nil {
-			log.Println("read:", err)
-			continue
-		}
-		if v.Id == 100000-1 {
-			fmt.Println("gata")
-		}
-		// fmt.Println(v)
-		// c.receiversList[v.Id] <- v
-	}
-}
-
-func (c *wsClient) GetBlockHash(blockHeight int) string {
-	c.WriteMessage(1, rpc.ChainGetBlockHash(c.currentIndex, blockHeight))
-
-	// response := <-c.receiversList[c.currentIndex]
-	c.currentIndex = (c.currentIndex + 1) % c.maxIndexes
-
-	// fmt.Println(response)
-	// blHash, err := response.ToString()
-	// if err != nil {
-	// 	return ""
-	// }
-
-	// return blHash
-	return ""
-}
