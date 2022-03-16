@@ -1,7 +1,7 @@
 package main
 
 import (
-	process "go-dictionary/internal"
+	"go-dictionary/internal"
 	"go-dictionary/internal/connection"
 	"log"
 )
@@ -42,7 +42,7 @@ func main() {
 	}
 	go wsClient.ReadWSMessages()
 
-	process.GetBlockHashes(wsClient, 100000)
+	internal.GetBlockHashes(wsClient, 100000)
 
 	// v := &rpc.JsonRpcResult{}
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 9429341))
