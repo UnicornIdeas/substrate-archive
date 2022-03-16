@@ -1,4 +1,4 @@
-package process
+package internal
 
 import (
 	"go-dictionary/internal/connection"
