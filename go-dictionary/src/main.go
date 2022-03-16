@@ -62,22 +62,3 @@ func main() {
 	// instant := metadata.Process(&rawMeta)
 	// fmt.Println(instant)
 }
-
-// func DecodeEvents() {
-// 	m := scalecodec.MetadataDecoder{}
-// 	m.Init(utiles.HexToBytes(kusamaV14))
-// 	_ = m.Process()
-// 	c, err := ioutil.ReadFile(fmt.Sprintf("%s.json", "network/crab"))
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	types.RegCustomTypes(source.LoadTypeRegistry(c))
-// 	e := scalecodec.EventsDecoder{}
-// 	option := types.ScaleDecoderOption{Metadata: &m.Metadata}
-
-// 	eventRaw := "0x180000000000000080e36a090000000002000000010000000000000000000000000002000000020000000e022ac9219ace40f5846ed675dded4e25a1997da7eabdea2f78597a71d6f38031487089d481874e06bd4026807fd0464f5c7a1c691c21237ed9b912ac0443a2bc2200ca9a3b000000000000000000000000000002000000150600b4c4040000000000000000000000000000020000000e04b4f7f03bebc56ebe96bc52ea5ed3159d45a0ce3a8d7f082983c33ef133274747002d31010000000000000000000000000000020000000000401b5f1300000000000000"
-// 	e.Init(types.ScaleBytes{Data: utiles.HexToBytes(eventRaw)}, &option)
-// 	e.Process()
-// 	b, _ := json.Marshal(e.Value)
-// 	fmt.Println(string(b))
-// }
