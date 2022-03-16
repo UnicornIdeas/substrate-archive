@@ -13,13 +13,14 @@ type WsClient struct {
 	ReceiversList chan *rpc.JsonRpcResult
 }
 
-func (c *WsClient) InitWSClient(endpoint string) error {
+func InitWSClient(endpoint string) (*WsClient, error) {
+	wsClient := &WsClient{}
 	var err error
-	c.Conn, _, err = websocket.DefaultDialer.Dial(endpoint, nil)
+	wsClient.Conn, _, err = websocket.DefaultDialer.Dial(endpoint, nil)
 	if err != nil {
-		return errors.New("could not start websocket")
+		return &WsClient{}, errors.New("could not start websocket")
 	}
-	return nil
+	return wsClient, nil
 }
 
 func (c *WsClient) ReadWSMessages() {

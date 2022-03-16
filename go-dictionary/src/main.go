@@ -1,9 +1,12 @@
 package main
 
 import (
-	// "github.com/itering/substrate-api-rpc/websocket"
+	process "go-dictionary/internal"
 	"go-dictionary/internal/connection"
+	"log"
 )
+
+// "github.com/itering/substrate-api-rpc/websocket"
 
 // func main() {
 // 	api, _ := gsrpc.NewSubstrateAPI("wss://polkadot.api.onfinality.io/public-ws")
@@ -33,12 +36,13 @@ import (
 
 func main() {
 	endpoint := "wss://polkadot.api.onfinality.io/public-ws"
-	wsClient := connection.WsClient{}
-	wsClient.InitWSClient(endpoint)
-
+	wsClient, err := connection.InitWSClient(endpoint)
+	if err != nil {
+		log.Println(err)
+	}
 	go wsClient.ReadWSMessages()
 
-	wsClient.GetBlockHashes(100000)
+	process.GetBlockHashes(wsClient, 100000)
 
 	// v := &rpc.JsonRpcResult{}
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 9429341))

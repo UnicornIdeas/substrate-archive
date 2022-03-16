@@ -1,10 +1,12 @@
-package connection
+package process
 
 import (
+	"go-dictionary/internal/connection"
+
 	"github.com/itering/substrate-api-rpc/rpc"
 )
 
-func (c *WsClient) GetBlockHash(blockHeight int) {
+func GetBlockHash(c *connection.WsClient, blockHeight int) {
 	c.WriteMessage(1, rpc.ChainGetBlockHash(blockHeight, blockHeight))
 
 	// response := <-c.receiversList[c.currentIndex]
@@ -18,8 +20,8 @@ func (c *WsClient) GetBlockHash(blockHeight int) {
 	// return blHash
 }
 
-func (c *WsClient) GetBlockHashes(blockHeight int) {
+func GetBlockHashes(c *connection.WsClient, blockHeight int) {
 	for i := 0; i < blockHeight; i++ {
-		c.GetBlockHash(i)
+		GetBlockHash(c, i)
 	}
 }
