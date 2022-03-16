@@ -44,11 +44,11 @@ type wsClient struct {
 
 func main() {
 	endpoint := "wss://polkadot.api.onfinality.io/public-ws"
-	wsclient := InitWSClient(endpoint, 100)
+	wsclient := InitWSClient(endpoint, 100000)
 
 	go wsclient.ReadWSMessages()
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 100000; i++ {
 		_ = wsclient.GetBlockHash(i)
 		// fmt.Println(hash)
 	}
@@ -115,7 +115,10 @@ func (c *wsClient) ReadWSMessages() {
 			log.Println("read:", err)
 			continue
 		}
-		fmt.Println(v)
+		if v.Id == 100000-1 {
+			fmt.Println("gata")
+		}
+		// fmt.Println(v)
 		// c.receiversList[v.Id] <- v
 	}
 }
