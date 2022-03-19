@@ -1,8 +1,7 @@
 package main
 
 import (
-	"go-dictionary/internal"
-	"go-dictionary/internal/connection"
+	"go-dictionary/internal/downloader"
 	"log"
 )
 
@@ -35,14 +34,30 @@ import (
 // }
 
 func main() {
-	endpoint := "wss://polkadot.api.onfinality.io/public-ws"
-	wsClient, err := connection.InitWSClient(endpoint)
+	// endpoint := "wss://polkadot.api.onfinality.io/public-ws"
+	// wsClient, err := connection.InitWSClient(endpoint)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// go wsClient.ReadWSMessages()
+
+	// internal.GetBlockHashes(wsClient, 100000)
+
+	downServer := downloader.InitDownServer("https://dot-rocksdb.polkashots.io/snapshot", "polkadot-9493950.RocksDb.tar.lz4")
+	// err := downServer.DownloadSnapshot()
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+
+	// err := downServer.DecompressSnapshot()
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+
+	err := downServer.UntarSnapshot()
 	if err != nil {
 		log.Println(err)
 	}
-	go wsClient.ReadWSMessages()
-
-	internal.GetBlockHashes(wsClient, 100000)
 
 	// v := &rpc.JsonRpcResult{}
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 9429341))
