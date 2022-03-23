@@ -7,6 +7,31 @@ import (
 	"github.com/linxGnu/grocksdb"
 )
 
+const (
+	/// Metadata about chain
+	COL_META = iota + 1
+	COL_STATE
+	COL_STATE_META
+	/// maps hashes -> lookup keys and numbers to canon hashes
+	COL_KEY_LOOKUP
+	/// Part of Block
+	COL_HEADER
+	COL_BODY
+	COL_JUSTIFICATION
+	/// Stores the changes tries for querying changed storage of a block
+	COL_CHANGES_TRIE
+	COL_AUX
+	/// Off Chain workers local storage
+	COL_OFFCHAIN
+	COL_CACHE
+	COL_TRANSACTION
+)
+
+type dbClient struct {
+	db            *grocksdb.DB
+	columnHandles []*grocksdb.ColumnFamilyHandle
+}
+
 func main() {
 	opts := grocksdb.NewDefaultOptions()
 	opts.SetMaxOpenFiles(-1)
@@ -18,16 +43,43 @@ func main() {
 		[]*grocksdb.Options{opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts},
 	)
 
-	//lookup key
-	// [(n >> 24) as u8, ((n >> 16) & 0xff) as u8, ((n >> 8) & 0xff) as u8, (n & 0xff) as u8]
-	resp, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[4], []byte{0, 0, 0, 1})
 	// resp, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[4], []byte{192, 9, 99, 88, 83, 78, 200, 210, 29, 1, 211, 75, 131, 110, 237, 71, 106, 28, 52, 63, 135, 36, 250, 33, 83, 220, 7, 37, 173, 121, 122, 144})
-	dataString := hex.EncodeToString(resp.Data())
-	fmt.Println(dataString)
+
+	client := dbClient{
+		db,
+		handles,
+	}
+
+	key, _ := client.GetLookupKeyForBlockHeight(1463)
+	s := hex.EncodeToString(key)
+	fmt.Println(s)
+
+	// blockMeta, err := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[COL_JUSTIFICATION], key)
+	// fmt.Println(blockMeta.Data())
+	// fmt.Println(err)
 
 	// header, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[5], resp.Data())
 	// fmt.Println(string(header.Data()))
 
-	body, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[6], resp.Data())
+	body, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[6], key)
 	fmt.Println(body.Data())
+}
+
+func (dbc *dbClient) GetLookupKeyForBlockHeight(blockHeight int) ([]byte, error) {
+	blockKey := BlockHeightToKey(blockHeight)
+	ro := grocksdb.NewDefaultReadOptions()
+	response, err := dbc.db.GetCF(ro, dbc.columnHandles[COL_KEY_LOOKUP], blockKey)
+	if err != nil {
+		return []byte{}, err
+	}
+	return response.Data(), nil
+}
+
+func BlockHeightToKey(blockHeight int) []byte {
+	return []byte{
+		byte(blockHeight >> 24),
+		byte((blockHeight >> 16) & 0xff),
+		byte((blockHeight >> 8) & 0xff),
+		byte(blockHeight & 0xff),
+	}
 }
