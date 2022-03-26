@@ -45,24 +45,31 @@ func main() {
 
 	// resp, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[4], []byte{192, 9, 99, 88, 83, 78, 200, 210, 29, 1, 211, 75, 131, 110, 237, 71, 106, 28, 52, 63, 135, 36, 250, 33, 83, 220, 7, 37, 173, 121, 122, 144})
 
-	client := dbClient{
-		db,
-		handles,
+	// client := dbClient{
+	// 	db,
+	// 	handles,
+	// }
+	iter := db.NewIteratorCF(grocksdb.NewDefaultReadOptions(), handles[COL_STATE])
+	// iter.SeekToFirst()
+
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+		key := iter.Value().Data()
+		s := hex.EncodeToString(key)
+		// fmt.Println(key)
+		// if strings.Contains(s, "80d41e5e16056765bc8461851072c9d7") {
+		fmt.Println(s)
+		// }
 	}
 
-	key, _ := client.GetLookupKeyForBlockHeight(1463)
-	s := hex.EncodeToString(key)
-	fmt.Println(s)
+	// key, _ = client.GetLookupKeyForBlockHeight(i)
+	// s = hex.EncodeToString(key)
+	// fmt.Println(s)
 
-	// blockMeta, err := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[COL_JUSTIFICATION], key)
-	// fmt.Println(blockMeta.Data())
-	// fmt.Println(err)
+	// // header, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[5], resp.Data())
+	// // fmt.Println(string(header.Data()))
 
-	// header, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[5], resp.Data())
-	// fmt.Println(string(header.Data()))
-
-	body, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[6], key)
-	fmt.Println(body.Data())
+	// body, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[6], key)
+	// fmt.Println(body.Data())
 }
 
 func (dbc *dbClient) GetLookupKeyForBlockHeight(blockHeight int) ([]byte, error) {
