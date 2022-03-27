@@ -16,9 +16,9 @@ const (
 	CidBabe = 0x45424142
 )
 
-func GetBlockData(c *connection.WsClient, blockInfo *rpc.JsonRpcResult) {
-	c.WriteMessage(1, rpc.ChainGetBlock(blockInfo.Id, blockInfo.Result.(string)))
-}
+// func GetBlockData(c *connection.WsClient, blockInfo *rpc.JsonRpcResult) {
+// 	c.WriteMessage(1, rpc.ChainGetBlock(blockInfo.Id, blockInfo.Result.(string)))
+// }
 
 func ExtractBlockData(c *connection.WsClient, blockData *rpc.JsonRpcResult) {
 	jsonBlock := blockData.Result.(map[string]interface{})["block"].(map[string]interface{})

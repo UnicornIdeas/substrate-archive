@@ -2,12 +2,19 @@ package internal
 
 import (
 	"encoding/hex"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"strconv"
-	"time"
 
+	"github.com/itering/scale.go/types"
+	"github.com/itering/substrate-api-rpc"
+	"github.com/itering/substrate-api-rpc/metadata"
 	"github.com/linxGnu/grocksdb"
 )
+
+const polkaAddressPrefix = "00"
+const SS58PRE = "53533538505245"
 
 const (
 	/// Metadata about chain
@@ -100,22 +107,23 @@ func (rc *RockClient) GetBodyForBlockLookupKey(key []byte) ([]byte, error) {
 }
 
 func (rc *RockClient) ProcessLookupKey(bq *JobQueueBody, hq *JobQueueHeader) {
-	t := time.Now()
-
 	lastElement, err := rc.db.GetCF(rc.ro, rc.columnHandles[COL_META], []byte("final"))
 	if err != nil {
 		log.Println(err)
 	}
 	hexIndex := hex.EncodeToString(lastElement.Data()[0:4])
 	maxBlockHeight, err := strconv.ParseInt(hexIndex, 16, 64)
-	log.Println(maxBlockHeight)
+	fmt.Println("MAX BLOCK HEIGHT:", maxBlockHeight)
 
 	// testBlockHeight := int(maxBlockHeight)
-	testBlockHeight := 100
-	for i := 0; i < testBlockHeight; i++ {
+	// testBlockHeight := 198073
+	// testBlockHeight := 29259
+	testBlockHeight := 287353
+	// testBlockHeight := 200866
+	for i := 287153; i < testBlockHeight; i++ {
 		rc.TestFunction(i, bq, hq)
 	}
-	log.Println("done with", testBlockHeight, "after", time.Now().Sub(t))
+	// log.Println("done with", testBlockHeight, "after", time.Now().Sub(t))
 }
 
 func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQueueHeader) {
@@ -139,7 +147,12 @@ func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQue
 	if err != nil {
 		log.Println(err)
 	}
-	headerJob.BlockHeader = header
+
+	headerDecoder := types.ScaleDecoder{}
+	headerDecoder.Init(types.ScaleBytes{Data: header}, nil)
+	decodedHeader := headerDecoder.ProcessAndUpdateData("Header")
+
+	headerJob.BlockHeader = decodedHeader
 
 	hq.Submit(headerJob)
 
@@ -147,7 +160,25 @@ func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQue
 	if err != nil {
 		log.Println(err)
 	}
-	bodyJob.BlockBody = body
+
+	bodyDecoder := types.ScaleDecoder{}
+	bodyDecoder.Init(types.ScaleBytes{Data: body}, nil)
+	decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
+	bodyList := decodedBody.([]interface{})
+	extrinsics := []string{}
+	for _, bodyL := range bodyList {
+		extrinsics = append(extrinsics, bodyL.(string))
+	}
+	specV := 8
+	metaString, _ := ioutil.ReadFile("./meta_files/" + strconv.Itoa(specV))
+	rawMeta := metadata.RuntimeRaw{Spec: 14, Raw: string(metaString)}
+	instant := metadata.Process(&rawMeta)
+
+	decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
+	if err != nil {
+		log.Println(err)
+	}
+	bodyJob.BlockBody = decodedExtrinsics
 
 	bq.Submit(bodyJob)
 }
