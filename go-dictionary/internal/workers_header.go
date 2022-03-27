@@ -1,7 +1,8 @@
 package internal
 
 import (
-	"log"
+	"go-dictionary/models"
+	"strconv"
 	"sync"
 )
 
@@ -120,5 +121,12 @@ func (w *WorkerHeader) Stop() {
 
 // Processing function
 func (job *HeaderJob) ProcessHeader() {
-	log.Println(job.BlockHeight, job.BlockHeader)
+	// log.Println(job.BlockHeight, job.BlockHeader)
+	logs := job.BlockHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{})
+	evmLogs := make([]models.EvmLog, len(logs))
+	for i := range logs {
+		evmLogs[i].Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
+		evmLogs[i].BlockHeight = job.BlockHeight
+	}
+	// log.Println(evmLogs)
 }

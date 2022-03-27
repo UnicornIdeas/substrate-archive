@@ -15,6 +15,7 @@ import (
 
 const polkaAddressPrefix = "00"
 const SS58PRE = "53533538505245"
+
 const (
 	/// Metadata about chain
 	COL_META = iota + 1
@@ -119,7 +120,7 @@ func (rc *RockClient) ProcessLookupKey(bq *JobQueueBody, hq *JobQueueHeader) {
 	// testBlockHeight := 29259
 	testBlockHeight := 287353
 	// testBlockHeight := 200866
-	for i := 287352; i < testBlockHeight; i++ {
+	for i := 287153; i < testBlockHeight; i++ {
 		rc.TestFunction(i, bq, hq)
 	}
 	// log.Println("done with", testBlockHeight, "after", time.Now().Sub(t))

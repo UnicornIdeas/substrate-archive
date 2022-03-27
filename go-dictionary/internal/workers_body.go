@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"go-dictionary/models"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -134,6 +133,14 @@ func (job *BodyJob) ProcessBody() {
 	job.ProcessExtrinsics()
 }
 
+func EncodeAddressId(txHash string) string {
+	checksumBytes, _ := hex.DecodeString(SS58PRE + polkaAddressPrefix + txHash)
+	checksum := blake2b.Sum512(checksumBytes)
+	checksumEnd := hex.EncodeToString(checksum[:2])
+	finalBytes, _ := hex.DecodeString(polkaAddressPrefix + txHash + checksumEnd)
+	return base58.Encode(finalBytes)
+}
+
 func (job *BodyJob) ProcessExtrinsics() {
 	extrinsicsResult := make([]models.Extrinsic, len(job.BlockBody))
 	transactionsResult := []models.EvmTransaction{}
@@ -189,7 +196,6 @@ func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicP
 			tempTransaction.From = EncodeAddressId(param.Value.(string))
 		}
 		if param.Name == "dest" {
-			log.Println(param.Value)
 			tempTransaction.To = EncodeAddressId(param.Value.(string))
 		}
 	}
@@ -200,19 +206,9 @@ func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicP
 	return tempTransaction
 }
 
-func EncodeAddressId(txHash string) string {
-	checksumString := SS58PRE + polkaAddressPrefix + txHash
-	checksumBytes, _ := hex.DecodeString(checksumString)
-	checksum := blake2b.Sum512(checksumBytes)
-	checksumEnd := hex.EncodeToString(checksum[:2])
-	finalString := polkaAddressPrefix + txHash + checksumEnd
-	finalBytes, _ := hex.DecodeString(finalString)
-	return base58.Encode(finalBytes)
-}
-
 func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.ExtrinsicParam, txHash string, transactionId int) ([]models.EvmTransaction, int) {
 	tempTransactions := []models.EvmTransaction{}
-	log.Println("utility for txHash:", txHash)
+	// log.Println("utility for txHash:", txHash)
 	tid := transactionId
 	for _, transaction := range transactions {
 		if transaction.Name == "calls" {
@@ -251,6 +247,5 @@ func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.Extrinsi
 			}
 		}
 	}
-	// log.Println(tempTransactions)
 	return tempTransactions, tid
 }
