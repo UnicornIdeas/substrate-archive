@@ -1,42 +1,51 @@
 package connection
 
-import "github.com/itering/substrate-api-rpc/rpc"
+import (
+	"sync"
+
+	"github.com/itering/substrate-api-rpc/rpc"
+)
 
 type SpecversionClient struct {
 	wsclient *WsClient
 	receiver chan *rpc.JsonRpcResult
-	caller   map[int]chan *rpc.JsonRpcResult //each caller will have a receiving channel
+	caller   sync.Map
 }
 
 func NewSpecVersionClient(endpoint string) (*SpecversionClient, error) {
-	chanSize := 100
+	chanSize := 50000
+	numWorkers := 30
+
 	receiver := make(chan *rpc.JsonRpcResult, chanSize)
 	wsClient, err := InitWSClient(endpoint, receiver)
 	if err != nil {
 		return nil, err
 	}
-	caller := make(map[int]chan *rpc.JsonRpcResult, 100)
 
 	svc := SpecversionClient{
 		wsclient: wsClient,
 		receiver: receiver,
-		caller:   caller,
 	}
-	go svc.readSpecVersions()
+	for i := 0; i < numWorkers; i++ {
+		go svc.readSpecVersions()
+	}
 	return &svc, nil
 }
 
 func (svc *SpecversionClient) readSpecVersions() {
 	for {
 		rawSpecV := <-svc.receiver
-		svc.caller[rawSpecV.Id] <- rawSpecV
+		callerChan, ok := svc.caller.Load(rawSpecV.Id)
+		if ok {
+			callerChan.(chan *rpc.JsonRpcResult) <- rawSpecV
+		}
 	}
 }
 
 func (svc *SpecversionClient) GetBlockSpecVersion(blockHeight int, blockHash string) (int, error) {
 	responseChan := make(chan *rpc.JsonRpcResult)
-	svc.caller[blockHeight] = responseChan
-	defer delete(svc.caller, blockHeight)
+	svc.caller.Store(blockHeight, responseChan)
+	defer svc.caller.Delete(blockHeight)
 
 	svc.wsclient.SendMessage(rpc.ChainGetRuntimeVersion(blockHeight, blockHash))
 

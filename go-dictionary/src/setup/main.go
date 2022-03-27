@@ -49,7 +49,7 @@ func main() {
 
 	t := time.Now()
 	var wg sync.WaitGroup
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 1000000; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -58,7 +58,14 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			fmt.Println(idx, hash)
+			// fmt.Println(idx, hash)
+
+			spec, err := specVClient.svRpcClient.GetBlockSpecVersion(idx, hash)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			fmt.Println(idx, spec)
 		}(i)
 	}
 

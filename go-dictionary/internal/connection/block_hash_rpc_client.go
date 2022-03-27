@@ -7,7 +7,6 @@ import (
 )
 
 type BlockHashClient struct {
-	sync.Mutex
 	wsclient *WsClient
 	receiver chan *rpc.JsonRpcResult
 	caller   sync.Map
@@ -15,7 +14,7 @@ type BlockHashClient struct {
 
 func NewBlockHashClient(endpoint string) (*BlockHashClient, error) {
 	chanSize := 50000
-	numWorkers := 30
+	numWorkers := 50
 
 	receiver := make(chan *rpc.JsonRpcResult, chanSize)
 	wsClient, err := InitWSClient(endpoint, receiver)
