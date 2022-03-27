@@ -88,6 +88,5 @@ func (c *WsClient) readWSMessages(workerId int) {
 }
 
 func (c *WsClient) SendMessage(message []byte) {
-	fmt.Println(string(message))
 	c.receivedMessages <- &message
 }
