@@ -3,6 +3,7 @@ package main
 import (
 	"go-dictionary/internal"
 	"log"
+	"sync"
 )
 
 func main() {
@@ -43,9 +44,12 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println(rc)
+	// log.Println(rc)
 	rc.ProcessLookupKey(jobQueueBody, jobQueueHeader)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+	wg.Wait()
 	// // header, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[5], resp.Data())
 	// // fmt.Println(string(header.Data()))
 

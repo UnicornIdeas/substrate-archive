@@ -6,25 +6,25 @@ import (
 )
 
 // Job - structure for job processing
-type JobHeader struct {
+type HeaderJob struct {
 	BlockHeight    int
 	BlockHash      string
 	BlockLookupKey []byte
-	BlockHeader    []byte
+	BlockHeader    interface{}
 }
 
 // Worker - the worker threads that actually process the jobs
 type WorkerHeader struct {
 	done             sync.WaitGroup
-	readyPool        chan chan JobHeader
-	assignedJobQueue chan JobHeader
+	readyPool        chan chan HeaderJob
+	assignedJobQueue chan HeaderJob
 	quit             chan bool
 }
 
 // JobQueue - a queue for enqueueing jobs to be processed
 type JobQueueHeader struct {
-	internalQueue     chan JobHeader
-	readyPool         chan chan JobHeader
+	internalQueue     chan HeaderJob
+	readyPool         chan chan HeaderJob
 	workers           []*WorkerHeader
 	dispatcherStopped sync.WaitGroup
 	workersStopped    sync.WaitGroup
@@ -34,13 +34,13 @@ type JobQueueHeader struct {
 // NewJobQueue - creates a new job queue
 func NewJobQueueHeader(maxWorkers int) *JobQueueHeader {
 	workersStopped := sync.WaitGroup{}
-	readyPool := make(chan chan JobHeader, maxWorkers)
+	readyPool := make(chan chan HeaderJob, maxWorkers)
 	workers := make([]*WorkerHeader, maxWorkers, maxWorkers)
 	for i := 0; i < maxWorkers; i++ {
 		workers[i] = NewWorkerHeader(readyPool, workersStopped)
 	}
 	return &JobQueueHeader{
-		internalQueue:     make(chan JobHeader),
+		internalQueue:     make(chan HeaderJob),
 		readyPool:         readyPool,
 		workers:           workers,
 		dispatcherStopped: sync.WaitGroup{},
@@ -68,7 +68,6 @@ func (q *JobQueueHeader) dispatch() {
 	for {
 		select {
 		case job := <-q.internalQueue: // We got something in on our queue
-			log.Println("Got job in header queue")
 			workerChannel := <-q.readyPool // Check out an available worker
 			workerChannel <- job           // Send the request to the channel
 		case <-q.quit:
@@ -83,16 +82,16 @@ func (q *JobQueueHeader) dispatch() {
 }
 
 // Submit - adds a new job to be processed
-func (q *JobQueueHeader) Submit(job JobHeader) {
+func (q *JobQueueHeader) Submit(job HeaderJob) {
 	q.internalQueue <- job
 }
 
 // NewWorker - creates a new worker
-func NewWorkerHeader(readyPool chan chan JobHeader, done sync.WaitGroup) *WorkerHeader {
+func NewWorkerHeader(readyPool chan chan HeaderJob, done sync.WaitGroup) *WorkerHeader {
 	return &WorkerHeader{
 		done:             done,
 		readyPool:        readyPool,
-		assignedJobQueue: make(chan JobHeader),
+		assignedJobQueue: make(chan HeaderJob),
 		quit:             make(chan bool),
 	}
 }
@@ -105,7 +104,7 @@ func (w *WorkerHeader) Start() {
 			w.readyPool <- w.assignedJobQueue // check the job queue in
 			select {
 			case job := <-w.assignedJobQueue: // see if anything has been assigned to the queue
-				job.Process()
+				job.ProcessHeader()
 			case <-w.quit:
 				w.done.Done()
 				return
@@ -120,6 +119,6 @@ func (w *WorkerHeader) Stop() {
 }
 
 // Processing function
-func (job *JobHeader) Process() {
-
+func (job *HeaderJob) ProcessHeader() {
+	log.Println(job.BlockHeight, job.BlockHeader)
 }
