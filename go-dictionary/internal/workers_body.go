@@ -2,8 +2,8 @@ package internal
 
 import (
 	"encoding/hex"
-	"fmt"
 	"go-dictionary/models"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,10 +16,13 @@ import (
 
 // BodyJob - structure for job processing
 type BodyJob struct {
+	PoolChannel    *JobQueueBody
 	BlockHeight    int
 	BlockHash      string
 	BlockLookupKey []byte
-	BlockBody      []map[string]interface{}
+	BlockBody      []byte
+	DecodedBody    []map[string]interface{}
+	// BlockBody      []map[string]interface{}
 }
 
 // WorkerBody - the worker threads that actually process the jobs for Body data
@@ -142,28 +145,47 @@ func EncodeAddressId(txHash string) string {
 }
 
 func (job *BodyJob) ProcessExtrinsics() {
+	// log.Println("BODYYYY")
+	// bodyDecoder := types.ScaleDecoder{}
+	// bodyDecoder.Init(types.ScaleBytes{Data: job.BlockBody}, nil)
+	// decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
+	// // log.Println(decodedBody)
+	// bodyList := decodedBody.([]interface{})
+	// extrinsics := []string{}
+	// for _, bodyL := range bodyList {
+	// 	extrinsics = append(extrinsics, bodyL.(string))
+	// }
+	// specV := 0
+	// metaString, _ := ioutil.ReadFile("./meta_files/" + strconv.Itoa(specV))
+	// rawMeta := metadata.RuntimeRaw{Spec: specV, Raw: string(metaString)}
+	// instant := metadata.Process(&rawMeta)
+
+	// decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
 	extrinsicsResult := make([]models.Extrinsic, len(job.BlockBody))
 	transactionsResult := []models.EvmTransaction{}
 	transactionId := 0
-	for i, ex := range job.BlockBody {
+	for i, ex := range job.DecodedBody {
 		extrinsicsResult[i].Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
 		extrinsicsResult[i].Module = strings.ToLower(ex["call_module"].(string))
 		extrinsicsResult[i].Call = ex["call_module_function"].(string)
 		extrinsicsResult[i].BlockHeight = job.BlockHeight
 		extrinsicsResult[i].Success = true
-		if txHash := job.BlockBody[i]["extrinsic_hash"]; txHash != nil {
+		if txHash := ex["extrinsic_hash"]; txHash != nil {
 			extrinsicsResult[i].TxHash = txHash.(string)
 		}
-		if signature := job.BlockBody[i]["signature"]; signature != nil {
+		if signature := ex["signature"]; signature != nil {
 			extrinsicsResult[i].IsSigned = true
 		}
 		if extrinsicsResult[i].Module == "utility" {
-			if transactions := job.BlockBody[i]["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
+			if transactions := ex["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
 				tempTransactions, tid := job.ProcessUtilityTransaction(transactions, extrinsicsResult[i].TxHash, transactionId)
 				transactionId = tid
 				transactionsResult = append(transactionsResult, tempTransactions...)
 			}
-		} else if transactions := job.BlockBody[i]["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
+		} else if transactions := ex["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
 			for _, transaction := range transactions {
 				if transaction.Name == "call" {
 					if transaction.Value.(map[string]interface{})["call_module"] == "Balances" {
@@ -175,14 +197,15 @@ func (job *BodyJob) ProcessExtrinsics() {
 			}
 		}
 	}
-	fmt.Println("EXTRINSICS:")
-	for _, e := range extrinsicsResult {
-		fmt.Println(e)
-	}
-	fmt.Println("TRANSACTIONS:")
-	for _, t := range transactionsResult {
-		fmt.Println(t)
-	}
+	log.Println(job.BlockHeight)
+	// fmt.Println("EXTRINSICS:", extrinsicsResult)
+	// for _, e := range extrinsicsResult {
+	// 	fmt.Println(e)
+	// }
+	// fmt.Println("TRANSACTIONS:")
+	// for _, t := range transactionsResult {
+	// 	fmt.Println(t)
+	// }
 }
 
 func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicParam, txHash string, transactionId int) models.EvmTransaction {

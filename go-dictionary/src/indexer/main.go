@@ -2,9 +2,52 @@ package main
 
 import (
 	"go-dictionary/internal"
+	"io/ioutil"
 	"log"
+	"strconv"
 	"sync"
+
+	"github.com/itering/scale.go/types"
+	"github.com/itering/substrate-api-rpc"
+	"github.com/itering/substrate-api-rpc/metadata"
 )
+
+func DecodeRawData(b chan *internal.BodyJob, h chan *internal.HeaderJob) {
+	for {
+		select {
+		case bodyJob, ok := <-b:
+			if ok {
+				bodyDecoder := types.ScaleDecoder{}
+				bodyDecoder.Init(types.ScaleBytes{Data: bodyJob.BlockBody}, nil)
+				decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
+				bodyList := decodedBody.([]interface{})
+				extrinsics := []string{}
+				for _, bodyL := range bodyList {
+					extrinsics = append(extrinsics, bodyL.(string))
+				}
+				specV := 0
+				metaString, _ := ioutil.ReadFile("./meta_files/" + strconv.Itoa(specV))
+				rawMeta := metadata.RuntimeRaw{Spec: specV, Raw: string(metaString)}
+				instant := metadata.Process(&rawMeta)
+
+				decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
+				if err != nil {
+					log.Println(err)
+				}
+				bodyJob.DecodedBody = decodedExtrinsics
+				bodyJob.PoolChannel.Submit(*bodyJob)
+			}
+		case headerJob, ok := <-h:
+			if ok {
+				headerDecoder := types.ScaleDecoder{}
+				headerDecoder.Init(types.ScaleBytes{Data: headerJob.BlockHeader}, nil)
+				headerJob.DecodedHeader = headerDecoder.ProcessAndUpdateData("Header")
+				headerJob.PoolChannel.Submit(*headerJob)
+			}
+		default:
+		}
+	}
+}
 
 func main() {
 	// wsClient, err := connection.InitWSClient("wss://polkadot.api.onfinality.io/public-ws")
@@ -33,6 +76,7 @@ func main() {
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 210000))
 	// hash, _ := v.ToString()
 	// log.Println(hash)
+	var mainWg sync.WaitGroup
 
 	jobQueueHeader := internal.NewJobQueueHeader(10)
 	jobQueueHeader.Start()
@@ -40,16 +84,28 @@ func main() {
 	jobQueueBody := internal.NewJobQueueBody(10)
 	jobQueueBody.Start()
 
+	bodyChannel := make(chan *internal.BodyJob, 10000000)
+	headerChannel := make(chan *internal.HeaderJob, 10000000)
+
 	rc, err := internal.OpenRocksdb("/mnt/hgfs/ArchivedRocksdb/chains/polkadot/db/full")
 	if err != nil {
 		log.Println(err)
 	}
 	// log.Println(rc)
-	rc.ProcessLookupKey(jobQueueBody, jobQueueHeader)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	wg.Wait()
+	mainWg.Add(1)
+	go func() {
+		defer mainWg.Done()
+		rc.ProcessLookupKey(jobQueueBody, jobQueueHeader, bodyChannel, headerChannel)
+	}()
+	mainWg.Add(1)
+	go DecodeRawData(bodyChannel, headerChannel)
+
+	mainWg.Wait()
+
+	// var wg sync.WaitGroup
+	// wg.Add(1)
+	// wg.Wait()
 	// // header, _ := db.GetCF(grocksdb.NewDefaultReadOptions(), handles[5], resp.Data())
 	// // fmt.Println(string(header.Data()))
 

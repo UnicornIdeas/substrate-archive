@@ -8,10 +8,13 @@ import (
 
 // Job - structure for job processing
 type HeaderJob struct {
+	PoolChannel    *JobQueueHeader
 	BlockHeight    int
 	BlockHash      string
 	BlockLookupKey []byte
-	BlockHeader    interface{}
+	BlockHeader    []byte
+	DecodedHeader  interface{}
+	// BlockHeader interface{}
 }
 
 // Worker - the worker threads that actually process the jobs
@@ -121,12 +124,10 @@ func (w *WorkerHeader) Stop() {
 
 // Processing function
 func (job *HeaderJob) ProcessHeader() {
-	// log.Println(job.BlockHeight, job.BlockHeader)
-	logs := job.BlockHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{})
+	logs := job.DecodedHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{})
 	evmLogs := make([]models.EvmLog, len(logs))
 	for i := range logs {
 		evmLogs[i].Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
 		evmLogs[i].BlockHeight = job.BlockHeight
 	}
-	// log.Println(evmLogs)
 }
