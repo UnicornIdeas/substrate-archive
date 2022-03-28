@@ -58,6 +58,7 @@ func (c *WsClient) connectPool(numSockets int) error {
 func (c *WsClient) workerGetMessage(workerId int) {
 	for {
 		msg := <-c.receivedMessages
+		fmt.Println(string(*msg))
 		c.wsPool[workerId].WriteMessage(1, *msg)
 	}
 }
