@@ -62,6 +62,7 @@ func main() {
 		fmt.Println("Error opening rocksdb:", err)
 		return
 	}
+	defer rdbClient.Close()
 	fmt.Println("Rocksdb connected")
 
 	//INIT spec version and metadata client

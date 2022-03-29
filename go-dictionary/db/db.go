@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"go-dictionary/models"
 	"log"
+	"os"
+	"strconv"
 	"sync"
 
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -31,7 +33,8 @@ type PostgresConfig struct {
 	Pwd  string
 }
 
-func CreatePostgresPool(config PostgresConfig) (PostgresClient, error) {
+func CreatePostgresPool() (PostgresClient, error) {
+
 	pc := PostgresClient{}
 	wc := WorkersChannels{}
 	wc.EventsChannel = make(chan models.Event, 10000000)
@@ -40,19 +43,26 @@ func CreatePostgresPool(config PostgresConfig) (PostgresClient, error) {
 	wc.ExtrinsicsChannel = make(chan models.Extrinsic, 10000000)
 	wc.SpecVersionsChannel = make(chan models.SpecVersion, 10000000)
 	pc.WorkersChannels = wc
-	err := pc.InitializePostgresDB(config)
+	err := pc.InitializePostgresDB()
 	if err != nil {
 		return PostgresClient{}, err
 	}
 	return pc, nil
 }
 
-func (pc *PostgresClient) InitializePostgresDB(config PostgresConfig) error {
-	if config.Port < 1 {
-		config.Port = 5432
+func (pc *PostgresClient) InitializePostgresDB() error {
+	user := os.Getenv("POSTGRES_USER")
+	pwd := os.Getenv("POSTGRES_PASSWORD")
+	host := os.Getenv("POSTGRES_HOST")
+	portString := os.Getenv("POSTGRES_PORT")
+	port, err := strconv.Atoi(portString)
+	if err != nil {
+		return err
 	}
+	dbname := os.Getenv("POSTGRES_DB")
+
 	connString := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s",
-		config.User, config.Pwd, config.Host, config.Port, config.Name)
+		user, pwd, host, port, dbname)
 
 	cfg, err := pgxpool.ParseConfig(connString)
 	if err != nil {

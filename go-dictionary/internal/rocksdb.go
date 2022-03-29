@@ -237,3 +237,7 @@ func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQue
 func (rc *RockClient) ProcessHash(key []byte) {
 
 }
+
+func (rc *RockClient) Close() {
+	rc.db.Close()
+}
