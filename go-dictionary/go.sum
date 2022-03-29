@@ -13,6 +13,8 @@ github.com/itering/scale.go v1.1.49 h1:hd2IHe6XJw36fY530bbNIyhy0nU8aXpNNyy/6ULub
 github.com/itering/scale.go v1.1.49/go.mod h1:Eg8T/07SKybkN9E1LmiEdSN/pLtV4rZDN9zuj486Gbs=
 github.com/itering/substrate-api-rpc v0.4.11 h1:b28xIlmJrdvxDWIrRTArHHllOPSR/fkm6GMCcdEKSJ0=
 github.com/itering/substrate-api-rpc v0.4.11/go.mod h1:t9EFksWioBNNlcrC3eQse24rB20sHNeKLXc1dJZfRSg=
+github.com/joho/godotenv v1.4.0 h1:3l4+N6zfMWnkbPEXKng2o2/MR5mSwTrBih4ZEkkz1lg=
+github.com/joho/godotenv v1.4.0/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/jpillora/backoff v1.0.0 h1:uvFg412JmmHBHw7iwprIxkPMI+sGQ4kzOWsMeHnm2EA=
 github.com/jpillora/backoff v1.0.0/go.mod h1:J/6gKK9jxlEcS3zixgDgUAsiuZ7yrSoa/FX5e0EB2j4=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=

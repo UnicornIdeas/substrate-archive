@@ -7,115 +7,160 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-dictionary/internal"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/itering/substrate-api-rpc/rpc"
+	"github.com/joho/godotenv"
 )
 
 type SpecVersionClient struct {
 	specVersionConfigPath string
+	metaFilePath          string
 	knownSpecVersions     []int
 	rocksdbClient         internal.RockClient
-	endpoint              string
+	httpEndpoint          string
 }
 
-// func main() {
-// 	nr := 10000
-// 	workers := 500
-// 	endpoint := "http://127.0.0.1:9933"
-// 	msg := make(chan bool)
-// 	msg2 := make(chan bool)
+type SpecVersionRange struct {
+	SpecVersion int `json:"spec_version"`
+	First       int `json:"first"` //first block for a spec version
+	Last        int `json:"last"`  //last block for a spec version
+}
 
-// 	t := time.Now()
-// 	for i := 0; i < workers; i++ {
-// 		go sendRPC(endpoint, msg, msg2)
-// 	}
-
-// 	go func() {
-// 		idx := 0
-// 		for {
-// 			<-msg2
-// 			idx++
-// 			if idx == nr {
-// 				fmt.Println(time.Now().Sub(t))
-// 			}
-// 		}
-// 	}()
-
-// 	v := true
-// 	for i := 0; i < nr; i++ {
-// 		msg <- v
-// 	}
-
-// 	for {
-// 	}
-// }
-
-// func sendRPC(endpoint string, msg chan bool, msg2 chan bool) {
-// 	for {
-// 		<-msg
-// 		reqBody := bytes.NewBuffer([]byte(`{"id":4834,"method":"chain_getRuntimeVersion","params":["0x43bdf907fc14b6a7e4b9f5914b24a414075e71cc5deb0a2b830725d7fdabf418"],"jsonrpc":"2.0"}`))
-// 		resp, err := http.Post(endpoint, "application/json", reqBody)
-// 		if err != nil {
-// 			fmt.Println("An Error Occured: ", err)
-// 			return
-// 		}
-// 		//Read the response body
-// 		body, err := ioutil.ReadAll(resp.Body)
-// 		if err != nil {
-// 			fmt.Println("Eroare raspuns:", err)
-// 			return
-// 		}
-// 		sb := string(body)
-// 		log.Printf(sb)
-// 		resp.Body.Close()
-// 		msg2 <- true
-// 	}
-// }
+type SpecVersionRangeList []SpecVersionRange
 
 func main() {
-	// endpoint := "wss://polkadot.api.onfinality.io/public-ws"
-	// endpoint := "ws://localhost:9944"
-	// metaFP := "./meta_files"
-	endpoint := "http://127.0.0.1:9933"
-	svConfigFile := "./spec_version_files/config"
+	//LOAD env
+	fmt.Println("* Loading env variables from .env...")
+	err := godotenv.Load(".env")
+	if err != nil {
+		fmt.Println("Failed to load environment variables:", err)
+		return
+	}
 
-	// m, err := metadata.NewMetaClient(endpoint, metaFP)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	endpoint := os.Getenv("HTTP_RPC_ENDPOINT")
+	fmt.Println("Loaded HTTP_RPC_ENDPOINT:", endpoint)
+	metaFP := os.Getenv("METADATA_FILES_PARENT")
+	fmt.Println("Loaded METADATA_FILES_PARENT:", metaFP)
+	svConfigFile := os.Getenv("SPEC_VERSION_CONFIG_FILE")
+	fmt.Println("Loaded SPEC_VERSION_CONFIG_FILE:", svConfigFile)
+	svRangeFile := os.Getenv("SPEC_VERSION_RANGE_FILE")
+	fmt.Println("Loaded SPEC_VERSION_RANGE_FILE:", svRangeFile)
+	rocksDbPath := os.Getenv("ROCKSDB_PATH")
+	fmt.Println("Loaded ROCKSDB_PATH:", rocksDbPath)
 
-	// metaV := map[float64]int{0: 0, 1: 50000}
-	// m.GenerateMetaFileForSpecVersions(metaV)
-
-	// rv := &rpc.JsonRpcResult{}
-	// _ = websocket.SendWsRequest(nil, rv, rpc.ChainGetRuntimeVersion(1, hash))
-	// versionName := rv.Result.(map[string]interface{})["specVersion"].(float64)
-
-	rdbClient, err := internal.OpenRocksdb("/tmp/rocksdb-polkadot/chains/polkadot/db/full")
+	//CONNECT to rocksdb
+	fmt.Println("* Connecting to rocksdb at", rocksDbPath, "...")
+	rdbClient, err := internal.OpenRocksdb(rocksDbPath)
 	if err != nil {
 		fmt.Println("Error opening rocksdb:", err)
 		return
 	}
+	fmt.Println("Rocksdb connected")
 
+	//INIT spec version and metadata client
+	fmt.Println("* Initialising spec version client...")
+	fmt.Println("HTTP RPC endpoint:", endpoint)
 	specVClient := SpecVersionClient{
+		metaFilePath:          metaFP,
 		specVersionConfigPath: svConfigFile,
 		rocksdbClient:         rdbClient,
-		endpoint:              endpoint,
+		httpEndpoint:          endpoint,
 	}
-
 	err = specVClient.init(endpoint)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Error initialising client:", err)
+		return
 	}
+	fmt.Println("Spec version client initialised")
 
-	// fmt.Println(specVClient.knownSpecVersions)
+	//GET last synced block by the node we interrogate
+	fmt.Println("* Getting last synced block...")
+	lastBlock, err := specVClient.rocksdbClient.GetLastBlockSynced()
+	if err != nil {
+		fmt.Println("Error getting last finalized block:", err)
+		return
+	}
+	fmt.Println("Last synced block:", lastBlock)
 
-	r, err := specVClient.getFirstBlockForSpecVersion(specVClient.knownSpecVersions[7], 0, 3917385)
-	fmt.Println(r, err)
+	fmt.Println("* Getting spec version for last indexed block...")
+	lastSpec, err := specVClient.getSpecVersion(lastBlock)
+	if err != nil {
+		fmt.Println("Failed to get spec version for last indexed block:", err)
+		return
+	}
+	fmt.Println("Last indexed block spec version:", lastSpec)
+
+	specLen := 0
+	specList := SpecVersionRangeList{}
+	for i := 0; i < len(specVClient.knownSpecVersions); i++ {
+		specList = append(specList, SpecVersionRange{SpecVersion: specVClient.knownSpecVersions[i]})
+		specLen++
+		if specVClient.knownSpecVersions[i] == lastSpec {
+			break //exit the loop if we are on the last indexed spec version
+		}
+	}
+	specList[0].First = 0                //spec version 0 starts from version 0
+	specList[specLen-1].Last = lastBlock //the last block for the last biggest spec version indexed is the last known block
+
+	fmt.Println("* Getting block ranges for spec versions...")
+	t := time.Now()
+	var wg sync.WaitGroup
+	//start from 1 because we know that for spec version 0 the first block is 0
+	for i := 1; i < specLen; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			blockNum, err := specVClient.getFirstBlockForSpecVersion(specVClient.knownSpecVersions[idx], 0, lastBlock)
+			if err != nil {
+				fmt.Println("Failed getting first block for Spec Version:", specVClient.knownSpecVersions[idx])
+				return
+			}
+			specList[idx].First = blockNum
+			specList[idx-1].Last = blockNum - 1
+			fmt.Println("Spec version", specVClient.knownSpecVersions[idx], "first block is", blockNum)
+		}(i)
+	}
+	wg.Wait()
+	fmt.Println("Finished getting block ranges for spec versions in", time.Now().Sub(t))
+
+	fmt.Println("* Writing ranges to file", svRangeFile)
+	fileData, err := json.MarshalIndent(specList, "", " ")
+	if err != nil {
+		fmt.Println("Error marshaling data:", err)
+		return
+	}
+	err = ioutil.WriteFile(svRangeFile, fileData, 0644)
+	if err != nil {
+		fmt.Println("Error writing to file:", err)
+		return
+	}
+	fmt.Println("Successfuly written block ranges to file")
+
+	fmt.Println("* Creating directory for metadata files...")
+	err = os.MkdirAll(metaFP, os.ModePerm)
+	if err != nil {
+		fmt.Println("Failed to create directory:", err)
+		return
+	}
+	fmt.Println("Directory created successfuly")
+
+	fmt.Println("* Getting metadata associated to spec versions and saving it in", metaFP, "...")
+	for _, spec := range specList {
+		wg.Add(1)
+		go func(version, block int) {
+			defer wg.Done()
+			specVClient.generateMetaFileForBlock(version, block)
+		}(spec.SpecVersion, spec.Last)
+	}
+	wg.Wait()
+	fmt.Println("Finished downloading metadata")
 }
 
 func (svc *SpecVersionClient) init(endpoint string) error {
@@ -150,15 +195,14 @@ func (svc *SpecVersionClient) loadConfigFromFile() error {
 	return nil
 }
 
-//search between start and end block heights the first node for a spec version
+// search between start and end block heights the first node for a spec version;
+// optimisation using modified binary search;
 func (svc *SpecVersionClient) getFirstBlockForSpecVersion(specVersion int, start, end int) (int, error) {
 	s := start
 	e := end
 
 	for {
 		mid := (s + (e - 1)) / 2
-		fmt.Println(s, e, mid) //dbg
-
 		if e-1 == s {
 			spec, err := svc.getSpecVersion(s)
 			if err != nil {
@@ -211,7 +255,7 @@ func (svc *SpecVersionClient) getSpecVersion(height int) (int, error) {
 	msg := fmt.Sprintf(`{"id":1,"method":"chain_getRuntimeVersion","params":["%s"],"jsonrpc":"2.0"}`, hash)
 	reqBody := bytes.NewBuffer([]byte(msg))
 
-	resp, err := http.Post(svc.endpoint, "application/json", reqBody)
+	resp, err := http.Post(svc.httpEndpoint, "application/json", reqBody)
 	if err != nil {
 		return 0, err
 	}
@@ -232,4 +276,48 @@ func (svc *SpecVersionClient) getBlockHash(height int) (string, error) {
 	}
 	hash := hex.EncodeToString(lk[4:])
 	return hash, nil
+}
+
+//saves metadata to file for a specific file version
+func (svc *SpecVersionClient) generateMetaFileForBlock(specVersion int, blockNumber int) {
+	fmt.Println("Getting metadata for spec version", specVersion)
+
+	hash, err := svc.getBlockHash(blockNumber)
+	if err != nil {
+		fmt.Printf("Error getting block hash: [err: %v] [specV: %d]\n", err, specVersion)
+		return
+	}
+
+	reqBody := bytes.NewBuffer([]byte(rpc.StateGetMetadata(1, hash)))
+	resp, err := http.Post(svc.httpEndpoint, "application/json", reqBody)
+	if err != nil {
+		fmt.Printf("Error getting metadata for spec version: [err: %v] [specV: %d]\n", err, specVersion)
+		return
+	}
+	defer resp.Body.Close()
+
+	fullPath := path.Join(svc.metaFilePath, fmt.Sprintf("%d", specVersion))
+	f, err := os.Create(fullPath)
+	if err != nil {
+		fmt.Printf("Error creating meta file: [err: %v] [specV: %d]\n", err, specVersion)
+		return
+	}
+	defer f.Close()
+
+	metaBody := &rpc.JsonRpcResult{}
+	json.NewDecoder(resp.Body).Decode(metaBody)
+
+	metaString, err := metaBody.ToString()
+	if err != nil {
+		fmt.Printf("Error converting meta response to string: [err: %v] [specV: %d]\n", err, specVersion)
+		return
+	}
+
+	_, err = f.WriteString(metaString)
+	if err != nil {
+		fmt.Printf("Error writing metadata to file: [err: %v] [specV: %d]\n", err, specVersion)
+		return
+	}
+
+	fmt.Println("Successfuly save metadata to file for spec version", specVersion)
 }
