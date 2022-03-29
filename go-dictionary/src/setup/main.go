@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go-dictionary/db"
 	"go-dictionary/internal"
+	"go-dictionary/models"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -162,6 +164,41 @@ func main() {
 	}
 	wg.Wait()
 	fmt.Println("Finished downloading metadata")
+
+	fmt.Println("* Connecting to database...")
+	dbClient, err := db.CreatePostgresPool()
+	if err != nil {
+		fmt.Println("Error connecting to db:", err)
+		return
+	}
+	defer dbClient.Close()
+	fmt.Println("Successfuly connected to Postgres")
+
+	fmt.Println("* Starting Postgres spec version workers...")
+	workerNumString := os.Getenv("POSTGRES_SPEC_VERSION_WORKERS")
+	workerNum, err := strconv.Atoi(workerNumString)
+	if err != nil {
+		fmt.Println("Wrong worker number formating:", err)
+		return
+	}
+
+	for i := 0; i < workerNum; i++ {
+		wg.Add(1)
+		go dbClient.SpecVersionsWorker(&wg)
+	}
+
+	fmt.Println("* Inserting spec versions in db...")
+	dbTime := time.Now()
+	for i := 0; i < specLen; i++ {
+		go func(spec SpecVersionRange) {
+			for j := spec.First; j <= spec.Last; j++ {
+				dbClient.WorkersChannels.SpecVersionsChannel <- &models.SpecVersion{Id: strconv.Itoa(spec.SpecVersion), BlockHeight: j}
+			}
+		}(specList[i])
+	}
+
+	wg.Wait()
+	fmt.Println("Finished inserting", lastBlock, "records in", time.Now().Sub(dbTime))
 }
 
 func (svc *SpecVersionClient) init(endpoint string) error {
@@ -322,3 +359,29 @@ func (svc *SpecVersionClient) generateMetaFileForBlock(specVersion int, blockNum
 
 	fmt.Println("Successfuly save metadata to file for spec version", specVersion)
 }
+
+// {
+// 	"Digest":{
+// 		"type_mapping":[
+// 			[
+// 				"logs",
+// 				"Vec<LogsData>"
+// 			]
+// 		],
+// 		"type": "struct"
+
+// 	},
+// 	"LogsData":{
+// 		"type_mapping":[
+// 			[
+// 				"data",
+// 				"HS246"
+// 			],
+// 			[
+// 				"engine",
+// 				"ceva_numeric"
+// 			]
+// 		],
+// 		"type": "struct"
+// 	}
+// }

@@ -18,11 +18,11 @@ type PostgresClient struct {
 }
 
 type WorkersChannels struct {
-	EventsChannel          chan models.Event
-	EvmLogsChannel         chan models.EvmLog
-	EvmTransactionsChannel chan models.EvmTransaction
-	ExtrinsicsChannel      chan models.Extrinsic
-	SpecVersionsChannel    chan models.SpecVersion
+	EventsChannel          chan *models.Event
+	EvmLogsChannel         chan *models.EvmLog
+	EvmTransactionsChannel chan *models.EvmTransaction
+	ExtrinsicsChannel      chan *models.Extrinsic
+	SpecVersionsChannel    chan *models.SpecVersion
 }
 
 type PostgresConfig struct {
@@ -34,14 +34,13 @@ type PostgresConfig struct {
 }
 
 func CreatePostgresPool() (PostgresClient, error) {
-
 	pc := PostgresClient{}
 	wc := WorkersChannels{}
-	wc.EventsChannel = make(chan models.Event, 10000000)
-	wc.EvmLogsChannel = make(chan models.EvmLog, 10000000)
-	wc.EvmTransactionsChannel = make(chan models.EvmTransaction, 10000000)
-	wc.ExtrinsicsChannel = make(chan models.Extrinsic, 10000000)
-	wc.SpecVersionsChannel = make(chan models.SpecVersion, 10000000)
+	wc.EventsChannel = make(chan *models.Event, 10000000)
+	wc.EvmLogsChannel = make(chan *models.EvmLog, 10000000)
+	wc.EvmTransactionsChannel = make(chan *models.EvmTransaction, 10000000)
+	wc.ExtrinsicsChannel = make(chan *models.Extrinsic, 10000000)
+	wc.SpecVersionsChannel = make(chan *models.SpecVersion, 10000000)
 	pc.WorkersChannels = wc
 	err := pc.InitializePostgresDB()
 	if err != nil {
