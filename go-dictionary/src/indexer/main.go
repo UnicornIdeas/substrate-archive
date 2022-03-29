@@ -107,10 +107,10 @@ func main() {
 	defer postgresClient.Close()
 
 	// Pool Workers routines for Header and Body
-	jobQueueHeader := internal.NewJobQueueHeader(10)
+	jobQueueHeader := internal.NewJobQueueHeader(10, postgresClient.WorkersChannels.EvmLogsChannel)
 	jobQueueHeader.Start()
 
-	jobQueueBody := internal.NewJobQueueBody(10)
+	jobQueueBody := internal.NewJobQueueBody(10, postgresClient.WorkersChannels.ExtrinsicsChannel, postgresClient.WorkersChannels.EvmTransactionsChannel)
 	jobQueueBody.Start()
 
 	// Channels to send BodyJob and HeaderJob to Decoder Worker

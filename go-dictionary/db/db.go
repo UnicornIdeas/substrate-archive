@@ -11,7 +11,11 @@ import (
 )
 
 type PostgresClient struct {
-	Pool                   *pgxpool.Pool
+	Pool            *pgxpool.Pool
+	WorkersChannels WorkersChannels
+}
+
+type WorkersChannels struct {
 	EventsChannel          chan models.Event
 	EvmLogsChannel         chan models.EvmLog
 	EvmTransactionsChannel chan models.EvmTransaction
@@ -29,12 +33,13 @@ type PostgresConfig struct {
 
 func CreatePostgresPool(config PostgresConfig) (PostgresClient, error) {
 	pc := PostgresClient{}
-	pc.EventsChannel = make(chan models.Event, 10000000)
-	pc.EvmLogsChannel = make(chan models.EvmLog, 10000000)
-	pc.EvmTransactionsChannel = make(chan models.EvmTransaction, 10000000)
-	pc.ExtrinsicsChannel = make(chan models.Extrinsic, 10000000)
-	pc.SpecVersionsChannel = make(chan models.SpecVersion, 10000000)
-
+	wc := WorkersChannels{}
+	wc.EventsChannel = make(chan models.Event, 10000000)
+	wc.EvmLogsChannel = make(chan models.EvmLog, 10000000)
+	wc.EvmTransactionsChannel = make(chan models.EvmTransaction, 10000000)
+	wc.ExtrinsicsChannel = make(chan models.Extrinsic, 10000000)
+	wc.SpecVersionsChannel = make(chan models.SpecVersion, 10000000)
+	pc.WorkersChannels = wc
 	err := pc.InitializePostgresDB(config)
 	if err != nil {
 		return PostgresClient{}, err
@@ -73,7 +78,7 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 	query := `INSERT INTO events (id, module, event, block_height) VALUES `
 	for !exitLoop {
 		select {
-		case event, ok := <-pc.EventsChannel:
+		case event, ok := <-pc.WorkersChannels.EventsChannel:
 			if ok {
 				query += fmt.Sprintf(`('%s', '%s', '%s', '%d'), `, event.Id, event.Module, event.Event, event.BlockHeight)
 				if counter < 700 {
@@ -95,10 +100,11 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 				counter = 0
 				writing = false
 			} else if !writing && used {
-				exitLoop = true
+				// exitLoop = true
 			}
 		}
 	}
+	log.Println("Exited EventsWorker...")
 	wg.Done()
 }
 
@@ -110,7 +116,7 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 	query := `INSERT INTO evm_logs (id, address, block_height, topics0, topics1, topics2, topics3) VALUES `
 	for !exitLoop {
 		select {
-		case evmLog, ok := <-pc.EvmLogsChannel:
+		case evmLog, ok := <-pc.WorkersChannels.EvmLogsChannel:
 			if ok {
 				query += fmt.Sprintf(`('%s', '%s', '%d', '%s', '%s', '%s', '%s'), `, evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3)
 				if counter < 700 {
@@ -132,10 +138,11 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 				counter = 0
 				writing = false
 			} else if !writing && used {
-				exitLoop = true
+				// exitLoop = true
 			}
 		}
 	}
+	log.Println("Exited EvmLogsWorker...")
 	wg.Done()
 }
 
@@ -147,7 +154,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 	query := `INSERT INTO evm_transactions(id, tx_hash, "from", "to", func, block_height, success) VALUES `
 	for !exitLoop {
 		select {
-		case evmTransaction, ok := <-pc.EvmTransactionsChannel:
+		case evmTransaction, ok := <-pc.WorkersChannels.EvmTransactionsChannel:
 			if ok {
 				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%s', '%d', '%t'), `, evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success)
 				if counter < 700 {
@@ -169,10 +176,11 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 				counter = 0
 				writing = false
 			} else if !writing && used {
-				exitLoop = true
+				// exitLoop = true
 			}
 		}
 	}
+	log.Println("Exited EvmTransactionsWorker...")
 	wg.Done()
 }
 
@@ -184,7 +192,7 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 	query := `INSERT INTO extrinsics (id, tx_hash, module, call, block_height, success, is_signed) VALUES `
 	for !exitLoop {
 		select {
-		case extrinsic, ok := <-pc.ExtrinsicsChannel:
+		case extrinsic, ok := <-pc.WorkersChannels.ExtrinsicsChannel:
 			if ok {
 				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%d', '%t', '%t'), `, extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned)
 				if counter < 700 {
@@ -206,10 +214,11 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 				counter = 0
 				writing = false
 			} else if !writing && used {
-				exitLoop = true
+				// exitLoop = true
 			}
 		}
 	}
+	log.Println("Exited ExtrinsicsWorker...")
 	wg.Done()
 }
 
@@ -221,7 +230,7 @@ func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
 	query := `INSERT INTO spec_versions (id, block_height) VALUES `
 	for !exitLoop {
 		select {
-		case specVersion, ok := <-pc.SpecVersionsChannel:
+		case specVersion, ok := <-pc.WorkersChannels.SpecVersionsChannel:
 			if ok {
 				query += fmt.Sprintf(`('%s', '%d'), `, specVersion.Id, specVersion.BlockHeight)
 				if counter < 9301 {
@@ -243,10 +252,11 @@ func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
 				counter = 0
 				writing = false
 			} else if !writing && used {
-				exitLoop = true
+				// exitLoop = true
 			}
 		}
 	}
+	log.Println("Exited SpecVersionsWorker...")
 	wg.Done()
 }
 
