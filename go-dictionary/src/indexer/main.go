@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go-dictionary/db"
 	"go-dictionary/internal"
 	"io/ioutil"
@@ -11,6 +12,7 @@ import (
 	"github.com/itering/scale.go/types"
 	"github.com/itering/substrate-api-rpc"
 	"github.com/itering/substrate-api-rpc/metadata"
+	"github.com/joho/godotenv"
 )
 
 func DecodeRawData(wg *sync.WaitGroup, b chan *internal.BodyJob, h chan *internal.HeaderJob) {
@@ -64,6 +66,12 @@ func DecodeRawData(wg *sync.WaitGroup, b chan *internal.BodyJob, h chan *interna
 }
 
 func main() {
+	err := godotenv.Load(".env")
+	if err != nil {
+		fmt.Println("Failed to load environment variables:", err)
+		return
+	}
+
 	// wsClient, err := connection.InitWSClient("wss://polkadot.api.onfinality.io/public-ws")
 	// if err != nil {
 	// 	log.Println(err)
@@ -92,15 +100,9 @@ func main() {
 	// log.Println(hash)
 
 	// TODO: move this config to env file:)
-	config := db.PostgresConfig{}
-	config.User = "postgres"
-	config.Pwd = "password"
-	config.Host = "localhost"
-	config.Port = 5432
-	config.Name = "rock"
 
 	// Postgres database initialize
-	postgresClient, err := db.CreatePostgresPool(config)
+	postgresClient, err := db.CreatePostgresPool()
 	if err != nil {
 		log.Println(err)
 	}
