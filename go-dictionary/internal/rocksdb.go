@@ -125,12 +125,12 @@ func (rc *RockClient) ProcessLookupKey(bq *JobQueueBody, hq *JobQueueHeader, b c
 	fmt.Println("MAX BLOCK HEIGHT:", maxBlockHeight)
 
 	t := time.Now()
-	testBlockHeight := maxBlockHeight
+	// testBlockHeight := maxBlockHeight
 	// testBlockHeight := 198073
 	// testBlockHeight := 29259
 	// testBlockHeight := 287353
 	// testBlockHeight := 200866
-	// testBlockHeight := 10
+	testBlockHeight := 20000
 	var wg sync.WaitGroup
 	for i := 0; i < testBlockHeight; i++ {
 		wg.Add(1)
@@ -144,27 +144,27 @@ func (rc *RockClient) ProcessLookupKey(bq *JobQueueBody, hq *JobQueueHeader, b c
 	log.Println("Done with", testBlockHeight, "after", time.Now().Sub(t))
 }
 
-func (rc *RockClient) GetHeaderRaw(headerJob *HeaderJob, h chan *HeaderJob, key []byte) {
+func (rc *RockClient) GetHeaderRaw(wg *sync.WaitGroup, headerJob *HeaderJob, h chan *HeaderJob, key []byte) {
+	defer wg.Done()
 	header, err := rc.GetHeaderForBlockLookupKey(key)
 	if err != nil {
 		log.Println(err)
 	}
 	headerJob.BlockHeader = header
-	// h <- headerJob
+	h <- headerJob
 }
 
-func (rc *RockClient) GetBodyRaw(bodyJob *BodyJob, h chan *BodyJob, key []byte) {
+func (rc *RockClient) GetBodyRaw(wg *sync.WaitGroup, bodyJob *BodyJob, b chan *BodyJob, key []byte) {
+	defer wg.Done()
 	body, err := rc.GetBodyForBlockLookupKey(key)
 	if err != nil {
 		log.Println(err)
 	}
 	bodyJob.BlockBody = body
-	// h <- bodyJob
+	b <- bodyJob
 }
 
 func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQueueHeader, b chan *BodyJob, h chan *HeaderJob) {
-	var rawWg sync.WaitGroup
-
 	bodyJob := BodyJob{}
 	headerJob := HeaderJob{}
 
@@ -185,19 +185,13 @@ func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQue
 	bodyJob.BlockHash = hash
 	headerJob.BlockHash = hash
 
+	var rawWg sync.WaitGroup
 	rawWg.Add(1)
-	go func() {
-		defer rawWg.Done()
-		rc.GetHeaderRaw(&headerJob, h, key)
-	}()
+	go rc.GetHeaderRaw(&rawWg, &headerJob, h, key)
 	rawWg.Add(1)
-	go func() {
-		defer rawWg.Done()
-		rc.GetBodyRaw(&bodyJob, b, key)
-	}()
+	go rc.GetBodyRaw(&rawWg, &bodyJob, b, key)
+
 	rawWg.Wait()
-	// log.Println(<-h)
-	// log.Println(<-b)
 
 	// header, err := rc.GetHeaderForBlockLookupKey(key)
 	// if err != nil {

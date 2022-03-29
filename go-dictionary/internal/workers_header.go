@@ -19,6 +19,7 @@ type HeaderJob struct {
 
 // Worker - the worker threads that actually process the jobs
 type WorkerHeader struct {
+	evmLogsChannel   chan models.EvmLog
 	done             sync.WaitGroup
 	readyPool        chan chan HeaderJob
 	assignedJobQueue chan HeaderJob
@@ -36,12 +37,12 @@ type JobQueueHeader struct {
 }
 
 // NewJobQueue - creates a new job queue
-func NewJobQueueHeader(maxWorkers int) *JobQueueHeader {
+func NewJobQueueHeader(maxWorkers int, evmLogsChannel chan models.EvmLog) *JobQueueHeader {
 	workersStopped := sync.WaitGroup{}
 	readyPool := make(chan chan HeaderJob, maxWorkers)
 	workers := make([]*WorkerHeader, maxWorkers, maxWorkers)
 	for i := 0; i < maxWorkers; i++ {
-		workers[i] = NewWorkerHeader(readyPool, workersStopped)
+		workers[i] = NewWorkerHeader(evmLogsChannel, readyPool, workersStopped)
 	}
 	return &JobQueueHeader{
 		internalQueue:     make(chan HeaderJob),
@@ -91,8 +92,9 @@ func (q *JobQueueHeader) Submit(job HeaderJob) {
 }
 
 // NewWorker - creates a new worker
-func NewWorkerHeader(readyPool chan chan HeaderJob, done sync.WaitGroup) *WorkerHeader {
+func NewWorkerHeader(evmLogsChannel chan models.EvmLog, readyPool chan chan HeaderJob, done sync.WaitGroup) *WorkerHeader {
 	return &WorkerHeader{
+		evmLogsChannel:   evmLogsChannel,
 		done:             done,
 		readyPool:        readyPool,
 		assignedJobQueue: make(chan HeaderJob),
@@ -108,7 +110,7 @@ func (w *WorkerHeader) Start() {
 			w.readyPool <- w.assignedJobQueue // check the job queue in
 			select {
 			case job := <-w.assignedJobQueue: // see if anything has been assigned to the queue
-				job.ProcessHeader()
+				job.ProcessHeader(w.evmLogsChannel)
 			case <-w.quit:
 				w.done.Done()
 				return
@@ -123,11 +125,12 @@ func (w *WorkerHeader) Stop() {
 }
 
 // Processing function
-func (job *HeaderJob) ProcessHeader() {
+func (job *HeaderJob) ProcessHeader(evmLogsChannel chan models.EvmLog) {
 	logs := job.DecodedHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{})
-	evmLogs := make([]models.EvmLog, len(logs))
 	for i := range logs {
-		evmLogs[i].Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
-		evmLogs[i].BlockHeight = job.BlockHeight
+		evmLog := models.EvmLog{}
+		evmLog.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
+		evmLog.BlockHeight = job.BlockHeight
+		evmLogsChannel <- evmLog
 	}
 }
