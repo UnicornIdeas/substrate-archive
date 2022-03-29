@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go-dictionary/db"
 	"go-dictionary/internal"
 	"io/ioutil"
 	"log"
@@ -12,11 +13,15 @@ import (
 	"github.com/itering/substrate-api-rpc/metadata"
 )
 
-func DecodeRawData(b chan *internal.BodyJob, h chan *internal.HeaderJob) {
-	for {
+func DecodeRawData(wg *sync.WaitGroup, b chan *internal.BodyJob, h chan *internal.HeaderJob) {
+	processing := false
+	exitDecoder := false
+	used := false
+	for !exitDecoder {
 		select {
 		case bodyJob, ok := <-b:
 			if ok {
+				processing = true
 				bodyDecoder := types.ScaleDecoder{}
 				bodyDecoder.Init(types.ScaleBytes{Data: bodyJob.BlockBody}, nil)
 				decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
@@ -36,17 +41,26 @@ func DecodeRawData(b chan *internal.BodyJob, h chan *internal.HeaderJob) {
 				}
 				bodyJob.DecodedBody = decodedExtrinsics
 				bodyJob.PoolChannel.Submit(*bodyJob)
+				processing = false
+				used = true
 			}
 		case headerJob, ok := <-h:
 			if ok {
+				processing = true
 				headerDecoder := types.ScaleDecoder{}
 				headerDecoder.Init(types.ScaleBytes{Data: headerJob.BlockHeader}, nil)
 				headerJob.DecodedHeader = headerDecoder.ProcessAndUpdateData("Header")
 				headerJob.PoolChannel.Submit(*headerJob)
+				processing = false
+				used = true
 			}
 		default:
+			if !processing && used {
+				exitDecoder = true
+			}
 		}
 	}
+	wg.Done()
 }
 
 func main() {
@@ -76,14 +90,30 @@ func main() {
 	// websocket.SendWsRequest(nil, v, rpc.ChainGetBlockHash(1, 210000))
 	// hash, _ := v.ToString()
 	// log.Println(hash)
-	var mainWg sync.WaitGroup
 
+	// TODO: move this config to env file:)
+	config := db.PostgresConfig{}
+	config.User = "postgres"
+	config.Pwd = "password"
+	config.Host = "localhost"
+	config.Port = 5432
+	config.Name = "rock"
+
+	// Postgres database initialize
+	postgresClient, err := db.CreatePostgresPool(config)
+	if err != nil {
+		log.Println(err)
+	}
+	defer postgresClient.Close()
+
+	// Pool Workers routines for Header and Body
 	jobQueueHeader := internal.NewJobQueueHeader(10)
 	jobQueueHeader.Start()
 
 	jobQueueBody := internal.NewJobQueueBody(10)
 	jobQueueBody.Start()
 
+	// Channels to send BodyJob and HeaderJob to Decoder Worker
 	bodyChannel := make(chan *internal.BodyJob, 10000000)
 	headerChannel := make(chan *internal.HeaderJob, 10000000)
 
@@ -91,17 +121,30 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	// log.Println(rc)
 
+	// Main routine
+	var mainWg sync.WaitGroup
 	mainWg.Add(1)
 	go func() {
 		defer mainWg.Done()
 		rc.ProcessLookupKey(jobQueueBody, jobQueueHeader, bodyChannel, headerChannel)
 	}()
 	mainWg.Add(1)
-	go DecodeRawData(bodyChannel, headerChannel)
+	go DecodeRawData(&mainWg, bodyChannel, headerChannel)
 
-	mainWg.Wait()
+	// Postgres Insert Workers
+	var workersWG sync.WaitGroup
+	workersWG.Add(1)
+	go postgresClient.EventsWorker(&workersWG)
+	workersWG.Add(1)
+	go postgresClient.EvmLogsWorker(&workersWG)
+	workersWG.Add(1)
+	go postgresClient.EvmTransactionsWorker(&workersWG)
+	workersWG.Add(1)
+	go postgresClient.ExtrinsicsWorker(&workersWG)
+	workersWG.Add(1)
+	go postgresClient.SpecVersionsWorker(&workersWG)
+	workersWG.Wait()
 
 	// var wg sync.WaitGroup
 	// wg.Add(1)
