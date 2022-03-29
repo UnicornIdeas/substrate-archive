@@ -75,7 +75,7 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 		select {
 		case event, ok := <-pc.EventsChannel:
 			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', %d), `, event.Id, event.Module, event.Event, event.BlockHeight)
+				query += fmt.Sprintf(`('%s', '%s', '%s', '%d'), `, event.Id, event.Module, event.Event, event.BlockHeight)
 				if counter < 700 {
 					counter++
 					used = true
@@ -112,7 +112,7 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 		select {
 		case evmLog, ok := <-pc.EvmLogsChannel:
 			if ok {
-				query += fmt.Sprintf(`('%s', '%s', %d, '%s', '%s', '%s', '%s'), `, evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3)
+				query += fmt.Sprintf(`('%s', '%s', '%d', '%s', '%s', '%s', '%s'), `, evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3)
 				if counter < 700 {
 					counter++
 					used = true
@@ -149,7 +149,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 		select {
 		case evmTransaction, ok := <-pc.EvmTransactionsChannel:
 			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%s', %d, %t), `, evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success)
+				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%s', '%d', '%t'), `, evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success)
 				if counter < 700 {
 					counter++
 					used = true
@@ -186,7 +186,7 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 		select {
 		case extrinsic, ok := <-pc.ExtrinsicsChannel:
 			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', %d, %t, %t), `, extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned)
+				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%d', '%t', '%t'), `, extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned)
 				if counter < 700 {
 					counter++
 					used = true
@@ -223,7 +223,7 @@ func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
 		select {
 		case specVersion, ok := <-pc.SpecVersionsChannel:
 			if ok {
-				query += fmt.Sprintf(`('%s', %d), `, specVersion.Id, specVersion.BlockHeight)
+				query += fmt.Sprintf(`('%s', '%d'), `, specVersion.Id, specVersion.BlockHeight)
 				if counter < 9301 {
 					counter++
 					used = true
