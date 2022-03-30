@@ -1,103 +1,77 @@
 <div align="center">
 
-# Substrate Archive
+# Subquery golang dictionary generator
 
-### Blockchain Indexing Engine
+### Subquery Dictionary Generator
 
-[Install the CLI](#install-the-cli) • [Documentation](#documentation) • [Contributing](#contributing) • [FAQ](#faq)
-
-![Rust](https://github.com/paritytech/substrate-archive/workflows/Rust/badge.svg)
-<a href="https://matrix.to/#/!roCGBGBArdcqwsdeXc:matrix.parity.io?via=matrix.parity.io&via=matrix.org&via=web3.foundation">
-![Matrix](https://img.shields.io/badge/Matrix-archive%20chatroom-blue)
-</a>
+[Setup](#setup) • [Documentation](#documentation) • [Contributing](#contributing) • [FAQ](#faq)
 </div>
 
-Run alongside a substrate-backed chain to index all Blocks, State, and Extrinsic data into PostgreSQL.
-
-![](https://i.imgur.com/1eOkKvo.gif)
-
-## Usage
-
-The schema for the PostgreSQL database is described in the PDF File at the root of this directory.
-
-Examples for how to use substrate-archive are in the [`examples/`](https://github.com/paritytech/substrate-archive/tree/master/examples) directory
+Run alongside a Polkadot archive node to index all Events, SpecVersion, Extrinsic, Transaction and Logs data into PostgreSQL.
 
 ## Prerequisites
+- Linux machine  ( !!! at this moment the project can be run only on Linux) 
+ - Polkadot running archive node (it is recommended to first sync the node and disconnect it from the internet before running our tool)
+ - PostgreSQL database
+ - .env file with proper configuration
 
-Extended requirements list found in the [wiki](https://github.com/paritytech/substrate-archive/wiki/)
+## Short presentation
+We wanted our tool to be fast, easy to use and easy to deploy, so we separated each concern of the project into three main pillars. The first step will be represented by a setup step which should be run before the other two steps. This should be the fastest of the three and it's main concern is the downloading of the spec versions and of the metadata. The second and third steps can be interchanged, run at the same time, run on different machines, whatever you like. The second step downloads the events and the third the block info (logs, extrinsics and transactions) 
 
-- depending on the chain you want to index, ~60GB free space
-- PostgreSQL with a database ready for lots of new data
-- Substrate-based Blockchain running with RocksDB as the backend
-- Substrate-based Blockchain running under `--pruning=archive`
+### Setup step
+ Before running this step we need a config file containing all the spec versions known, each on a line.
+ eg.: [example config file](https://github.com/UnicornIdeas/substrate-archive/blob/master/go-dictionary/spec_version_files/config)
+ This file should be changed manually each time a new runtime version is added
 
-## Install The CLI
+This step is optimized based on some presumptions:
 
-### The CLI
+ 1. there are no overlapping spec versions, this means that a spec version is valid only for a continuous range of blocks
+ 2. the spec versions are only in ascending order
+ 
 
-The CLI is an easier way to get started with substrate-archive. It provides a batteries-included binary, so that you don't have to write any rust code. All thats required is setting up a PostgreSQL DB, and modifying a config file. More information in the [wiki](https://github.com/paritytech/substrate-archive/wiki)
+Starting from these suppositions, we don't need to interrogate the Polkadot runtime to get the spec version for each block. In  return we did a modified binary search and queried  only the ends of the block range for the currently indexed blocks by archive node. 
 
-#### The Node-Template CLI
+This data is static, so we can save it in a file for future use (we save the spec version and the staring and ending blocks in a [.json](https://github.com/UnicornIdeas/substrate-archive/blob/master/go-dictionary/spec_version_files/ranges.json)  file for using with the second and third step). 
 
-The node-template CLI (in /bin/node-template-archive) is provided as an example of implementing substrate-archive for your chain.
+Initialising spec version downloader from config and connecting to the databases
+![ ](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/spec_version_init.PNG)
 
-### Quick Start
 
-```bash
-git clone https://github.com/paritytech/substrate-archive.git
-# Set up the databases
-source ./substrate-archive/scripts/up.sh # Run ./scripts/down.sh to drop the database
-cd substrate-archive/bin/polkadot-archive/
-# Start the normal polkadot node with `pruning` set to `archive`
-polkadot --chain=polkadot --pruning=archive
-# Start up the substrate-archive node. `chain` can be one of `polkadot`, `kusama`, or `westend`.
-cargo run --release --  -c test_conf.toml --chain=polkadot
-```
+Binary search spec version ranges
 
-You can access the help dialog via `cargo run --release -- --help`. Note that `up` and `down` scripts are meant for convenience and are not meant to be complete. Look in the [wiki](https://github.com/paritytech/substrate-archive/wiki) for more information about the database setup.
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/spec_version_specs.PNG)
 
-## [FAQ](https://github.com/paritytech/substrate-archive/wiki/0.\)-FAQ)
+We got the spec versions for 4.3mil blocks in approx 50s
 
-## Contributing
+After getting the spec versions, we get the metadata specific for each spec version [metadata specific for each spec version](https://github.com/UnicornIdeas/substrate-archive/tree/master/go-dictionary/meta_files), again for future use
 
-Contributors are welcome!
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/metadata_save.PNG)
 
-Read the [Doc](https://github.com/paritytech/substrate-archive/blob/master/CONTRIBUTING.md)
+At the end, the spec versions are saved in the Postgres database
 
-## Documentation
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/spec_version_db_save.PNG)
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/db_spec_version.PNG)
 
-You can build the documentation for this crate by running `cargo doc`. 
-More Docs [here](https://github.com/paritytech/substrate-archive/wiki)
+### Events step
+This step downloads the block events interrogating the runtime rpc endpoint for each block (direct access of rocksdb is under research). The config files downloaded at the first step are used.
 
-## Troubleshooting
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/events_start.PNG)
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/events_finish.PNG)
 
-### Archive fails to start with a `too many open files` error.
+approx **2 minutes** for downloading, processing and inserting in db **500000 block events** => approx **4200bps** for events 
 
-Because of the way a [RocksDB Secondary Instance](https://github.com/facebook/rocksdb/wiki/Secondary-instance) works, it requires that all the files of the primary instance remain open in the secondary instance. This could trigger the error on linux, but simply requires that you raise the max open files limit (`ulimit`):
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/db_events.PNG)
 
-- With Docker: `$ docker run --ulimit nofile=90000:90000 <image-tag>`
-- For Current Shell Session: `ulimit -a 90000`
-- Permanantly Per-User
-  - Edit `/etc/security/limits.conf`
+### Extrinsics, logs and transactions step
+The block data is directly queried from **RocksDB**
 
-    ```
-    # /etc/security/limits.conf
-    *           hard    nofile      4096
-    *           soft    nofile      1024
-    some_usr    hard    nofile      90000
-    some_usr    soft    nofile      90000
-    insipx      hard    nofile      90000
-    insipx      soft    nofile      90000
-    root        hard    nofile      90000
-    root        soft    nofile      90000
-    ```
+![enter image description here](https://raw.githubusercontent.com/UnicornIdeas/substrate-archive/master/go-dictionary/screenshots/500000%20blocks%20evm_logs+evm_transactions+exintrics%20test.png)
 
-For macOS and Linux, a warning message will be raised on the startup when there is a low fd sources limit in the current system, but Windows won't have such a low fd limit warning.
+approx **1m42s** for **500000** blocks => approx **4900bps** for extrinsics, transactions and logs
 
-## Contact
+The overall performance is over **4200bps**
 
-You can contact us at:
- - matrix: #substrate-archive:matrix.parity.io
- - email: andrew.plaza@parity.io
-
-[contribution]: CONTRIBUTING.md
+This is not production ready, just a proof of concept
+Possible improvements:
+ - get the events from rocksdb (verify first that the effort is worth)
+ - more routines behavior (always more routines)
