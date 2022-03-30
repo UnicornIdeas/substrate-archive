@@ -79,6 +79,7 @@ func (pc *PostgresClient) Close() {
 }
 
 func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
+	log.Println("[+] Starting EventsWorker!")
 	defer wg.Done()
 	maxBatch := 100000
 	counter := 0
@@ -103,7 +104,7 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 		[]string{"id", "module", "event", "block_height"},
 		pgx.CopyFromRows(insertItems),
 	)
-	log.Println("Exited EventsWorker...")
+	log.Println("[-] Exited EventsWorker...")
 }
 
 func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
