@@ -92,7 +92,6 @@ func main() {
 		fmt.Println("Error getting last finalized block:", err)
 		return
 	}
-	lastBlock = 200000 //DBG
 	fmt.Println("Last synced block:", lastBlock)
 
 	fmt.Println("* Getting spec version for last indexed block...")
@@ -366,39 +365,3 @@ func (svc *SpecVersionClient) generateMetaFileForBlock(specVersion int, blockNum
 
 	fmt.Println("Successfuly save metadata to file for spec version", specVersion)
 }
-
-// {
-// 	"Digest":{
-// 		"type_mapping":[
-// 			[
-// 				"logs",
-// 				"Vec<LogsDataOutter>"
-// 			]
-// 		],
-// 		"type": "struct"
-
-// 	},
-// 	"Digest":{
-// 		"type_mapping":[
-// 			[
-// 				"logs",
-// 				"Vec<LogsData>"
-// 			]
-// 		],
-// 		"type": "struct"
-
-// 	},
-// 	"LogsData":{
-// 		"type_mapping":[
-// 			[
-// 				"data",
-// 				"HS246"
-// 			],
-// 			[
-// 				"engine",
-// 				"ceva_numeric"
-// 			]
-// 		],
-// 		"type": "struct"
-// 	}
-// }
