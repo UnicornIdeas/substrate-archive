@@ -11,7 +11,7 @@ Run alongside a Polkadot archive node to index all Events, SpecVersion, Extrinsi
 - Linux machine  ( !!! at this moment the project can be run only on Linux) 
  - Polkadot running archive node (it is recommended to first sync the node and disconnect it from the internet before running our tool)
  - PostgreSQL database
- - .env file with proper configuration
+ - [.env](https://github.com/UnicornIdeas/substrate-archive/blob/master/go-dictionary/example.env) file with proper configuration (the file should be named .env and located in the root directory of the project)
 
 
 # Install
