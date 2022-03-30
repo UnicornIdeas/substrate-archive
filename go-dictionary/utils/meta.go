@@ -10,10 +10,11 @@ import (
 	scalecodec "github.com/itering/scale.go"
 	"github.com/itering/scale.go/types"
 	"github.com/itering/scale.go/utiles"
+	"github.com/itering/substrate-api-rpc/metadata"
 )
 
 //load metadata from the downlaoded files
-func getMetaForSpecVersion(specVersion int) (*types.MetadataStruct, *string, error) {
+func getMetaForSpecVersion(specVersion int) (*types.MetadataStruct, *metadata.Instant, error) {
 	metaPath := os.Getenv("METADATA_FILES_PARENT")
 
 	fullPath := path.Join(metaPath, strconv.Itoa(specVersion))
@@ -32,5 +33,8 @@ func getMetaForSpecVersion(specVersion int) (*types.MetadataStruct, *string, err
 		return nil, nil, err
 	}
 
-	return &m.Metadata, &rawString, err
+	rawInstant := metadata.RuntimeRaw{Spec: specVersion, Raw: string(rawString)}
+	metaInstant := metadata.Process(&rawInstant)
+
+	return &m.Metadata, metaInstant, err
 }

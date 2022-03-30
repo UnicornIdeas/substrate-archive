@@ -2,11 +2,9 @@ package internal
 
 import (
 	"encoding/hex"
-	"fmt"
 	"log"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/linxGnu/grocksdb"
 )
@@ -117,125 +115,85 @@ func (rc *RockClient) GetLastBlockSynced() (int, error) {
 	return int(maxBlockHeight), nil
 }
 
-func (rc *RockClient) ProcessLookupKey(bq *JobQueueBody, hq *JobQueueHeader, b chan *BodyJob, h chan *HeaderJob) {
+func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	maxBlockHeight, err := rc.GetLastBlockSynced()
 	if err != nil {
 		log.Println(err)
 	}
-	fmt.Println("MAX BLOCK HEIGHT:", maxBlockHeight)
+	log.Println("[INFO] Last available block - ", maxBlockHeight)
 
-	t := time.Now()
+	preProcessChannel := make(chan int, 10000000)
+
+	var pWg sync.WaitGroup
+	pWg.Add(1)
+	go rc.PreProcessWorker(&pWg, bq, hq, preProcessChannel)
+
 	// testBlockHeight := maxBlockHeight
 	// testBlockHeight := 198073
 	// testBlockHeight := 29259
 	// testBlockHeight := 287353
 	// testBlockHeight := 200866
-	testBlockHeight := 20000
-	var wg sync.WaitGroup
-	for i := 0; i < testBlockHeight; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			rc.TestFunction(i, bq, hq, b, h)
-		}(i)
-	}
-	wg.Wait()
+	testBlockHeight := 100000
 
-	log.Println("Done with", testBlockHeight, "after", time.Now().Sub(t))
+	for i := 0; i < testBlockHeight; i++ {
+		preProcessChannel <- i
+	}
+	close(preProcessChannel)
+
+	pWg.Wait()
 }
 
-func (rc *RockClient) GetHeaderRaw(wg *sync.WaitGroup, headerJob *HeaderJob, h chan *HeaderJob, key []byte) {
+func (rc *RockClient) GetHeaderRaw(wg *sync.WaitGroup, headerJob *HeaderJob, hq *JobQueueHeader, key []byte) {
 	defer wg.Done()
 	header, err := rc.GetHeaderForBlockLookupKey(key)
 	if err != nil {
 		log.Println(err)
 	}
 	headerJob.BlockHeader = header
-	h <- headerJob
+	hq.Submit(headerJob)
 }
 
-func (rc *RockClient) GetBodyRaw(wg *sync.WaitGroup, bodyJob *BodyJob, b chan *BodyJob, key []byte) {
+func (rc *RockClient) GetBodyRaw(wg *sync.WaitGroup, bodyJob *BodyJob, bq *JobQueueBody, key []byte) {
 	defer wg.Done()
 	body, err := rc.GetBodyForBlockLookupKey(key)
 	if err != nil {
 		log.Println(err)
 	}
 	bodyJob.BlockBody = body
-	b <- bodyJob
+	bq.Submit(bodyJob)
 }
 
-func (rc *RockClient) TestFunction(blockHeight int, bq *JobQueueBody, hq *JobQueueHeader, b chan *BodyJob, h chan *HeaderJob) {
-	bodyJob := BodyJob{}
-	headerJob := HeaderJob{}
+func (rc *RockClient) PreProcessWorker(wg *sync.WaitGroup, bq *JobQueueBody, hq *JobQueueHeader, ppc chan int) {
+	log.Println("[+] Starting PreProcessWorker!")
+	defer wg.Done()
 
-	bodyJob.BlockHeight = blockHeight
-	headerJob.BlockHeight = blockHeight
+	for blockHeight := range ppc {
+		bodyJob := BodyJob{}
+		headerJob := HeaderJob{}
 
-	bodyJob.PoolChannel = bq
-	headerJob.PoolChannel = hq
+		bodyJob.BlockHeight = blockHeight
+		headerJob.BlockHeight = blockHeight
 
-	key, err := rc.GetLookupKeyForBlockHeight(blockHeight)
-	if err != nil {
-		log.Println(err)
+		key, err := rc.GetLookupKeyForBlockHeight(blockHeight)
+		if err != nil {
+			log.Println(err)
+		}
+		bodyJob.BlockLookupKey = key
+		headerJob.BlockLookupKey = key
+
+		hash := hex.EncodeToString(key[4:])
+		bodyJob.BlockHash = hash
+		headerJob.BlockHash = hash
+
+		var rawWg sync.WaitGroup
+		rawWg.Add(2)
+		go rc.GetHeaderRaw(&rawWg, &headerJob, hq, key)
+		go rc.GetBodyRaw(&rawWg, &bodyJob, bq, key)
+		rawWg.Wait()
 	}
-	bodyJob.BlockLookupKey = key
-	headerJob.BlockLookupKey = key
-
-	hash := hex.EncodeToString(key[4:])
-	bodyJob.BlockHash = hash
-	headerJob.BlockHash = hash
-
-	var rawWg sync.WaitGroup
-	rawWg.Add(1)
-	go rc.GetHeaderRaw(&rawWg, &headerJob, h, key)
-	rawWg.Add(1)
-	go rc.GetBodyRaw(&rawWg, &bodyJob, b, key)
-
-	rawWg.Wait()
-
-	// header, err := rc.GetHeaderForBlockLookupKey(key)
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-	// headerDecoder := types.ScaleDecoder{}
-	// headerDecoder.Init(types.ScaleBytes{Data: job.BlockHeader.([]byte)}, nil)
-	// // decodedHeader := headerDecoder.ProcessAndUpdateData(`Struct<Struct<Vec>,CompactU32,H256,H256,Compact,BlockNumber,H256>`)
-	// decodedHeader := headerDecoder.ProcessAndUpdateData("Header")
-	// log.Println(decodedHeader)
-	// headerJob.BlockHeader = header
-
-	// hq.Submit(headerJob)
-
-	// body, err := rc.GetBodyForBlockLookupKey(key)
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-
-	// bodyDecoder := types.ScaleDecoder{}
-	// bodyDecoder.Init(types.ScaleBytes{Data: body}, nil)
-	// decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
-	// // log.Println(decodedBody)
-	// bodyList := decodedBody.([]interface{})
-	// extrinsics := []string{}
-	// for _, bodyL := range bodyList {
-	// 	extrinsics = append(extrinsics, bodyL.(string))
-	// }
-	// specV := 0
-	// metaString, _ := ioutil.ReadFile("./meta_files/" + strconv.Itoa(specV))
-	// rawMeta := metadata.RuntimeRaw{Spec: specV, Raw: string(metaString)}
-	// instant := metadata.Process(&rawMeta)
-
-	// decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-	// bodyJob.BlockBody = body
-
-	// bq.Submit(bodyJob)
-}
-
-func (rc *RockClient) ProcessHash(key []byte) {
-
+	close(hq.internalQueue)
+	close(bq.internalQueue)
+	log.Println("[-] Exiting PreProcessWorker...")
 }
 
 func (rc *RockClient) Close() {

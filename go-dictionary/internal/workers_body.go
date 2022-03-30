@@ -3,31 +3,32 @@ package internal
 import (
 	"encoding/hex"
 	"go-dictionary/models"
+	"go-dictionary/utils"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
 
 	scalecodec "github.com/itering/scale.go"
 	"github.com/itering/scale.go/types"
+	"github.com/itering/substrate-api-rpc"
 	"github.com/mr-tron/base58"
 	"golang.org/x/crypto/blake2b"
 )
 
 // BodyJob - structure for job processing
 type BodyJob struct {
-	PoolChannel    *JobQueueBody
 	BlockHeight    int
 	BlockHash      string
 	BlockLookupKey []byte
 	BlockBody      []byte
-	DecodedBody    []map[string]interface{}
-	// BlockBody      []map[string]interface{}
 }
 
 // WorkerBody - the worker threads that actually process the jobs for Body data
 type WorkerBody struct {
-	extrinsicsChannel      chan models.Extrinsic
-	evmTransactionsChannel chan models.EvmTransaction
+	specVersionList        utils.SpecVersionRangeList
+	extrinsicsChannel      chan *models.Extrinsic
+	evmTransactionsChannel chan *models.EvmTransaction
 	done                   sync.WaitGroup
 	readyPool              chan chan BodyJob
 	assignedJobQueue       chan BodyJob
@@ -36,29 +37,29 @@ type WorkerBody struct {
 
 // JobQueueBody - a queue for enqueueing jobs to be processed
 type JobQueueBody struct {
-	internalQueue     chan BodyJob
-	readyPool         chan chan BodyJob
-	workers           []*WorkerBody
-	dispatcherStopped sync.WaitGroup
-	workersStopped    sync.WaitGroup
-	quit              chan bool
+	internalQueue          chan BodyJob
+	readyPool              chan chan BodyJob
+	workers                []*WorkerBody
+	workersStopped         sync.WaitGroup
+	extrinsicsChannel      chan *models.Extrinsic
+	evmTransactionsChannel chan *models.EvmTransaction
 }
 
 // NewJobQueueBody - creates a new job queue
-func NewJobQueueBody(maxWorkers int, extrinsicsChannel chan models.Extrinsic, evmTransactionsChannel chan models.EvmTransaction) *JobQueueBody {
+func NewJobQueueBody(maxWorkers int, specVersionList utils.SpecVersionRangeList, extrinsicsChannel chan *models.Extrinsic, evmTransactionsChannel chan *models.EvmTransaction) *JobQueueBody {
 	workersStopped := sync.WaitGroup{}
 	readyPool := make(chan chan BodyJob, maxWorkers)
 	workers := make([]*WorkerBody, maxWorkers, maxWorkers)
 	for i := 0; i < maxWorkers; i++ {
-		workers[i] = NewWorkerBody(extrinsicsChannel, evmTransactionsChannel, readyPool, workersStopped)
+		workers[i] = NewWorkerBody(specVersionList, extrinsicsChannel, evmTransactionsChannel, readyPool, workersStopped)
 	}
 	return &JobQueueBody{
-		internalQueue:     make(chan BodyJob),
-		readyPool:         readyPool,
-		workers:           workers,
-		dispatcherStopped: sync.WaitGroup{},
-		workersStopped:    workersStopped,
-		quit:              make(chan bool),
+		internalQueue:          make(chan BodyJob),
+		readyPool:              readyPool,
+		workers:                workers,
+		workersStopped:         workersStopped,
+		extrinsicsChannel:      extrinsicsChannel,
+		evmTransactionsChannel: evmTransactionsChannel,
 	}
 }
 
@@ -70,38 +71,29 @@ func (q *JobQueueBody) Start() {
 	go q.dispatch()
 }
 
-// Stop - stops the workers and dispatcher routine
-func (q *JobQueueBody) Stop() {
-	q.quit <- true
-	q.dispatcherStopped.Wait()
-}
-
 func (q *JobQueueBody) dispatch() {
-	q.dispatcherStopped.Add(1)
-	for {
-		select {
-		case job := <-q.internalQueue: // We got something in on our queue
-			workerChannel := <-q.readyPool // Check out an available worker
-			workerChannel <- job           // Send the request to the channel
-		case <-q.quit:
-			for i := 0; i < len(q.workers); i++ {
-				q.workers[i].Stop()
-			}
-			q.workersStopped.Wait()
-			q.dispatcherStopped.Done()
-			return
-		}
+	for job := range q.internalQueue {
+		workerChannel := <-q.readyPool // Check out an available worker
+		workerChannel <- job           // Send the request to the channel
 	}
+	for i := 0; i < len(q.workers); i++ {
+		q.workers[i].Stop()
+	}
+	q.workersStopped.Wait()
+	close(q.extrinsicsChannel)
+	close(q.evmTransactionsChannel)
+	log.Println("[-] Closing Body Pool...")
 }
 
 // Submit - adds a new BodyJob to be processed
-func (q *JobQueueBody) Submit(job BodyJob) {
-	q.internalQueue <- job
+func (q *JobQueueBody) Submit(job *BodyJob) {
+	q.internalQueue <- *job
 }
 
 // NewWorkerBody - creates a new workerBody
-func NewWorkerBody(extrinsicsChannel chan models.Extrinsic, evmTransactionsChannel chan models.EvmTransaction, readyPool chan chan BodyJob, done sync.WaitGroup) *WorkerBody {
+func NewWorkerBody(specVersionList utils.SpecVersionRangeList, extrinsicsChannel chan *models.Extrinsic, evmTransactionsChannel chan *models.EvmTransaction, readyPool chan chan BodyJob, done sync.WaitGroup) *WorkerBody {
 	return &WorkerBody{
+		specVersionList:        specVersionList,
 		extrinsicsChannel:      extrinsicsChannel,
 		evmTransactionsChannel: evmTransactionsChannel,
 		done:                   done,
@@ -119,7 +111,7 @@ func (w *WorkerBody) Start() {
 			w.readyPool <- w.assignedJobQueue // check the job queue in
 			select {
 			case job := <-w.assignedJobQueue: // see if anything has been assigned to the queue
-				job.ProcessBody(w.extrinsicsChannel, w.evmTransactionsChannel)
+				job.ProcessBody(w.extrinsicsChannel, w.evmTransactionsChannel, w.specVersionList)
 			case <-w.quit:
 				w.done.Done()
 				return
@@ -141,9 +133,24 @@ func EncodeAddressId(txHash string) string {
 	return base58.Encode(finalBytes)
 }
 
-func (job *BodyJob) ProcessBody(extrinsicsChannel chan models.Extrinsic, evmTransactionsChannel chan models.EvmTransaction) {
+func (job *BodyJob) ProcessBody(extrinsicsChannel chan *models.Extrinsic, evmTransactionsChannel chan *models.EvmTransaction, specVersionList utils.SpecVersionRangeList) {
+	bodyDecoder := types.ScaleDecoder{}
+	bodyDecoder.Init(types.ScaleBytes{Data: job.BlockBody}, nil)
+	decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
+	bodyList := decodedBody.([]interface{})
+	extrinsics := []string{}
+	for _, bodyL := range bodyList {
+		extrinsics = append(extrinsics, bodyL.(string))
+	}
+	specV, instant := specVersionList.GetBlockSpecVersionAndInstant(job.BlockHeight)
+
+	decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
+	if err != nil {
+		log.Println(err)
+	}
+
 	transactionId := 0
-	for i, ex := range job.DecodedBody {
+	for i, ex := range decodedExtrinsics {
 		extrinsicsResult := models.Extrinsic{}
 		extrinsicsResult.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
 		extrinsicsResult.Module = strings.ToLower(ex["call_module"].(string))
@@ -157,13 +164,13 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan models.Extrinsic, evmTran
 		if signature := ex["signature"]; signature != nil {
 			extrinsicsResult.IsSigned = true
 		}
-		extrinsicsChannel <- extrinsicsResult
+		extrinsicsChannel <- &extrinsicsResult
 		if extrinsicsResult.Module == "utility" {
 			if transactions := ex["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
 				transactions, tid := job.ProcessUtilityTransaction(transactions, extrinsicsResult.TxHash, transactionId)
 				transactionId = tid
 				for _, transaction := range transactions {
-					evmTransactionsChannel <- transaction
+					evmTransactionsChannel <- &transaction
 				}
 			}
 		} else if transactions := ex["params"].([]scalecodec.ExtrinsicParam); transactions != nil {
@@ -172,12 +179,11 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan models.Extrinsic, evmTran
 					if transaction.Value.(map[string]interface{})["call_module"] == "Balances" {
 						transaction := job.ProcessBalancesTransaction(transaction, extrinsicsResult.TxHash, transactionId)
 						transactionId++
-						evmTransactionsChannel <- transaction
+						evmTransactionsChannel <- &transaction
 					}
 				}
 			}
 		}
-
 	}
 }
 

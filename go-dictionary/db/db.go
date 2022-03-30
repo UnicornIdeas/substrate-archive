@@ -117,120 +117,94 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 }
 
 func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
-	writing := false
+	log.Println("[+] Started EvmLogsWorker!")
+	defer wg.Done()
+	maxBatch := 100000
 	counter := 0
-	exitLoop := false
-	used := false
-	query := `INSERT INTO evm_logs (id, address, block_height, topics0, topics1, topics2, topics3) VALUES `
-	for !exitLoop {
-		select {
-		case evmLog, ok := <-pc.WorkersChannels.EvmLogsChannel:
-			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%d', '%s', '%s', '%s', '%s'), `, evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3)
-				if counter < 700 {
-					counter++
-					used = true
-				} else {
-					writing = true
-					pc.InsertByQuery(query[:len(query)-2])
-					query = `INSERT INTO evm_logs (id, address, block_height, topics0, topics1, topics2, topics3) VALUES `
-					counter = 0
-					writing = false
-				}
-			}
-		default:
-			if counter != 0 && !writing {
-				writing = true
-				pc.InsertByQuery(query[:len(query)-2])
-				query = `INSERT INTO evm_logs (id, address, block_height, topics0, topics1, topics2, topics3) VALUES `
-				counter = 0
-				writing = false
-			} else if !writing && used {
-				// exitLoop = true
-			}
+	insertItems := [][]interface{}{}
+	for evmLog := range pc.WorkersChannels.EvmLogsChannel {
+		insertItems = append(insertItems, []interface{}{evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3})
+		counter++
+		if counter == maxBatch {
+			pc.Pool.CopyFrom(
+				context.Background(),
+				pgx.Identifier{"evm_logs"},
+				[]string{"id", "address", "block_height", "topics0", "topics1", "topics2", "topics3"},
+				pgx.CopyFromRows(insertItems),
+			)
+			insertItems = nil
+			counter = 0
 		}
 	}
-	log.Println("Exited EvmLogsWorker...")
-	wg.Done()
+	pc.Pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"evm_logs"},
+		[]string{"id", "address", "block_height", "topics0", "topics1", "topics2", "topics3"},
+		pgx.CopyFromRows(insertItems),
+	)
+	log.Println("[-] Exited EvmLogsWorker...")
 }
 
 func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
-	writing := false
+	log.Println("[+] Started EvmTransactionsWorker!")
+	defer wg.Done()
+	maxBatch := 100000
 	counter := 0
-	exitLoop := false
-	used := false
-	query := `INSERT INTO evm_transactions(id, tx_hash, "from", "to", func, block_height, success) VALUES `
-	for !exitLoop {
-		select {
-		case evmTransaction, ok := <-pc.WorkersChannels.EvmTransactionsChannel:
-			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%s', '%d', '%t'), `, evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success)
-				if counter < 700 {
-					counter++
-					used = true
-				} else {
-					writing = true
-					pc.InsertByQuery(query[:len(query)-2])
-					query = `INSERT INTO evm_transactions(id, tx_hash, "from", "to", func, block_height, success) VALUES `
-					counter = 0
-					writing = false
-				}
-			}
-		default:
-			if counter != 0 && !writing {
-				writing = true
-				pc.InsertByQuery(query[:len(query)-2])
-				query = `INSERT INTO evm_transactions (id, tx_hash, "from", "to", func, block_height, success) VALUES `
-				counter = 0
-				writing = false
-			} else if !writing && used {
-				// exitLoop = true
-			}
+	insertItems := [][]interface{}{}
+	for evmTransaction := range pc.WorkersChannels.EvmTransactionsChannel {
+		insertItems = append(insertItems, []interface{}{evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success})
+		counter++
+		if counter == maxBatch {
+			pc.Pool.CopyFrom(
+				context.Background(),
+				pgx.Identifier{"evm_transactions"},
+				[]string{"id", "tx_hash", `"from"`, `"to"`, "func", "block_height", "success"},
+				pgx.CopyFromRows(insertItems),
+			)
+			insertItems = nil
+			counter = 0
 		}
 	}
-	log.Println("Exited EvmTransactionsWorker...")
-	wg.Done()
+	pc.Pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"evm_transactions"},
+		[]string{"id", "tx_hash", `"from"`, `"to"`, "func", "block_height", "success"},
+		pgx.CopyFromRows(insertItems),
+	)
+	log.Println("[-] Exited EvmTransactionsWorker...")
 }
 
-func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup, done chan bool) {
-	writing := false
+func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
+	log.Println("[+] Started ExtrinsicsWorker!")
+	defer wg.Done()
+	maxBatch := 100000
 	counter := 0
-	exitLoop := false
-	used := false
-	query := `INSERT INTO extrinsics (id, tx_hash, module, call, block_height, success, is_signed) VALUES `
-	for !exitLoop {
-		select {
-		case extrinsic, ok := <-pc.WorkersChannels.ExtrinsicsChannel:
-			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', '%s', '%d', '%t', '%t'), `, extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned)
-				if counter < 700 {
-					counter++
-					used = true
-				} else {
-					writing = true
-					pc.InsertByQuery(query[:len(query)-2])
-					query = `INSERT INTO extrinsics (id, tx_hash, module, call, block_height, success, is_signed) VALUES `
-					counter = 0
-					writing = false
-				}
-			}
-		default:
-			if counter != 0 && !writing {
-				writing = true
-				pc.InsertByQuery(query[:len(query)-2])
-				query = `INSERT INTO extrinsics (id, tx_hash, module, call, block_height, success, is_signed) VALUES `
-				counter = 0
-				writing = false
-			} else if !writing && used {
-				// exitLoop = true
-			}
+	insertItems := [][]interface{}{}
+	for extrinsic := range pc.WorkersChannels.ExtrinsicsChannel {
+		insertItems = append(insertItems, []interface{}{extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned})
+		counter++
+		if counter == maxBatch {
+			pc.Pool.CopyFrom(
+				context.Background(),
+				pgx.Identifier{"extrinsics"},
+				[]string{"id", "tx_hash", "module", "call", "block_height", "success", "is_signed"},
+				pgx.CopyFromRows(insertItems),
+			)
+			insertItems = nil
+			counter = 0
 		}
 	}
-	log.Println("Exited ExtrinsicsWorker...")
-	wg.Done()
+	pc.Pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"extrinsics"},
+		[]string{"id", "tx_hash", "module", "call", "block_height", "success", "is_signed"},
+		pgx.CopyFromRows(insertItems),
+	)
+	log.Println("[-] Exited ExtrinsicsWorker...")
 }
 
 func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
+	log.Println("[+] Started SpecVersionWorker!")
 	defer wg.Done()
 	maxBatch := 100000
 	counter := 0
@@ -255,7 +229,7 @@ func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
 		[]string{"id", "block_height"},
 		pgx.CopyFromRows(insertItems),
 	)
-	log.Println("Exited SpecVersionsWorker...")
+	log.Println("[-] Exited SpecVersionsWorker...")
 }
 
 func (pc *PostgresClient) InsertByQuery(query string) error {
