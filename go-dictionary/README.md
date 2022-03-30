@@ -13,6 +13,41 @@ Run alongside a Polkadot archive node to index all Events, SpecVersion, Extrinsi
  - PostgreSQL database
  - .env file with proper configuration
 
+
+# Install
+
+The project was developed on linux and the following tutorial is for linux:
+
+The rocksdb library was build with the following script:
+
+    #!/bin/bash
+    sudo apt-get install -y libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
+    pushd /tmp
+    git clone https://github.com/facebook/rocksdb.git && cd rocksdb
+    git checkout v6.29.3
+    export CXXFLAGS='-Wno-error=deprecated-copy -Wno-error=pessimizing-move -Wno-error=class-memaccess'
+    make static_lib
+
+After that we must set the flags for go:
+
+    go env -w CGO_CFLAGS="-I/tmp/rocksdb/include"
+    go env -w CGO_LDFLAGS="-L/tmp/rocksdb -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy -llz4 -lzstd"
+
+The next step is to start the polkadot node in archive mode:
+
+    polkadot --name "Unicorn's node" --base-path *path_to_location_where_to_store_rocksdb_data" --chain polkadot --pruning archive --ws-max-out-buffer-capacity 1024
+
+In the terminal that will start the project you must change the limit for opened files:
+
+    ulimit -n 90000
+
+To start program:
+
+    go run src/setup/main.go
+    go run src/indexer/main.go
+    go run src/event_indexer/main.go
+
+
 ## Short presentation
 We wanted our tool to be fast, easy to use and easy to deploy, so we separated each concern of the project into three main pillars. The first step will be represented by a setup step which should be run before the other two steps. This should be the fastest of the three and it's main concern is the downloading of the spec versions and of the metadata. The second and third steps can be interchanged, run at the same time, run on different machines, whatever you like. The second step downloads the events and the third the block info (logs, extrinsics and transactions) 
 
