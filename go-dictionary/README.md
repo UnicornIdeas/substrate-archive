@@ -3,8 +3,6 @@
 # Subquery golang dictionary generator
 
 ### Subquery Dictionary Generator
-
-[Setup](#setup) • [Documentation](#documentation) • [Contributing](#contributing) • [FAQ](#faq)
 </div>
 
 Run alongside a Polkadot archive node to index all Events, SpecVersion, Extrinsic, Transaction and Logs data into PostgreSQL.
