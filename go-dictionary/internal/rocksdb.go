@@ -128,8 +128,7 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	pWg.Add(1)
 	go rc.PreProcessWorker(&pWg, bq, hq, preProcessChannel)
 
-	// testBlockHeight := maxBlockHeight
-	testBlockHeight := 100000
+	testBlockHeight := maxBlockHeight
 
 	for i := 0; i < testBlockHeight; i++ {
 		preProcessChannel <- i
