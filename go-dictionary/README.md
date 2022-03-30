@@ -35,7 +35,7 @@ After that we must set the flags for go:
 
 The next step is to start the polkadot node in archive mode:
 
-    polkadot --name "Unicorn's node" --base-path *path_to_location_where_to_store_rocksdb_data" --chain polkadot --pruning archive --ws-max-out-buffer-capacity 1024
+    polkadot --name "Unicorn's node" --base-path *path_to_location_where_to_store_rocksdb_data* --chain polkadot --pruning archive --ws-max-out-buffer-capacity 1024
 
 In the terminal that will start the project you must change the limit for opened files:
 
