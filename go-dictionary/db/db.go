@@ -6,9 +6,9 @@ import (
 	"go-dictionary/models"
 	"log"
 	"os"
-	"strconv"
 	"sync"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -18,11 +18,11 @@ type PostgresClient struct {
 }
 
 type WorkersChannels struct {
-	EventsChannel          chan models.Event
-	EvmLogsChannel         chan models.EvmLog
-	EvmTransactionsChannel chan models.EvmTransaction
-	ExtrinsicsChannel      chan models.Extrinsic
-	SpecVersionsChannel    chan models.SpecVersion
+	EventsChannel          chan *models.Event
+	EvmLogsChannel         chan *models.EvmLog
+	EvmTransactionsChannel chan *models.EvmTransaction
+	ExtrinsicsChannel      chan *models.Extrinsic
+	SpecVersionsChannel    chan *models.SpecVersion
 }
 
 type PostgresConfig struct {
@@ -34,15 +34,16 @@ type PostgresConfig struct {
 }
 
 func CreatePostgresPool() (PostgresClient, error) {
-
 	pc := PostgresClient{}
+
 	wc := WorkersChannels{}
-	wc.EventsChannel = make(chan models.Event, 10000000)
-	wc.EvmLogsChannel = make(chan models.EvmLog, 10000000)
-	wc.EvmTransactionsChannel = make(chan models.EvmTransaction, 10000000)
-	wc.ExtrinsicsChannel = make(chan models.Extrinsic, 10000000)
-	wc.SpecVersionsChannel = make(chan models.SpecVersion, 10000000)
+	wc.EventsChannel = make(chan *models.Event, 10000000)
+	wc.EvmLogsChannel = make(chan *models.EvmLog, 10000000)
+	wc.EvmTransactionsChannel = make(chan *models.EvmTransaction, 10000000)
+	wc.ExtrinsicsChannel = make(chan *models.Extrinsic, 10000000)
+	wc.SpecVersionsChannel = make(chan *models.SpecVersion, 10000000)
 	pc.WorkersChannels = wc
+
 	err := pc.InitializePostgresDB()
 	if err != nil {
 		return PostgresClient{}, err
@@ -54,15 +55,12 @@ func (pc *PostgresClient) InitializePostgresDB() error {
 	user := os.Getenv("POSTGRES_USER")
 	pwd := os.Getenv("POSTGRES_PASSWORD")
 	host := os.Getenv("POSTGRES_HOST")
-	portString := os.Getenv("POSTGRES_PORT")
-	port, err := strconv.Atoi(portString)
-	if err != nil {
-		return err
-	}
+	port := os.Getenv("POSTGRES_PORT")
 	dbname := os.Getenv("POSTGRES_DB")
+	pool_max_conns := os.Getenv("POSTGRES_CONN_POOL")
 
-	connString := fmt.Sprintf("postgresql://%s:%s@%s:%d/%s",
-		user, pwd, host, port, dbname)
+	connString := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable&pool_max_conns=%s",
+		user, pwd, host, port, dbname, pool_max_conns)
 
 	cfg, err := pgxpool.ParseConfig(connString)
 	if err != nil {
@@ -194,7 +192,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
+func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup, done chan bool) {
 	writing := false
 	counter := 0
 	exitLoop := false
@@ -233,41 +231,31 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 }
 
 func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
-	writing := false
+	defer wg.Done()
+	maxBatch := 100000
 	counter := 0
-	exitLoop := false
-	used := false
-	query := `INSERT INTO spec_versions (id, block_height) VALUES `
-	for !exitLoop {
-		select {
-		case specVersion, ok := <-pc.WorkersChannels.SpecVersionsChannel:
-			if ok {
-				query += fmt.Sprintf(`('%s', '%d'), `, specVersion.Id, specVersion.BlockHeight)
-				if counter < 9301 {
-					counter++
-					used = true
-				} else {
-					writing = true
-					pc.InsertByQuery(query[:len(query)-2])
-					query = `INSERT INTO spec_versions (id, block_height) VALUES `
-					counter = 0
-					writing = false
-				}
-			}
-		default:
-			if counter != 0 && !writing {
-				writing = true
-				pc.InsertByQuery(query[:len(query)-2])
-				query = `INSERT INTO spec_versions (id, block_height) VALUES `
-				counter = 0
-				writing = false
-			} else if !writing && used {
-				// exitLoop = true
-			}
+	insertItems := [][]interface{}{}
+	for specVersion := range pc.WorkersChannels.SpecVersionsChannel {
+		insertItems = append(insertItems, []interface{}{specVersion.Id, specVersion.BlockHeight})
+		counter++
+		if counter == maxBatch {
+			pc.Pool.CopyFrom(
+				context.Background(),
+				pgx.Identifier{"spec_versions"},
+				[]string{"id", "block_height"},
+				pgx.CopyFromRows(insertItems),
+			)
+			insertItems = nil
+			counter = 0
 		}
 	}
+	pc.Pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"spec_versions"},
+		[]string{"id", "block_height"},
+		pgx.CopyFromRows(insertItems),
+	)
 	log.Println("Exited SpecVersionsWorker...")
-	wg.Done()
 }
 
 func (pc *PostgresClient) InsertByQuery(query string) error {

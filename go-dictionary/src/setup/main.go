@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go-dictionary/db"
 	"go-dictionary/internal"
+	"go-dictionary/models"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -36,6 +38,8 @@ type SpecVersionRange struct {
 type SpecVersionRangeList []SpecVersionRange
 
 func main() {
+	var wg sync.WaitGroup
+
 	//LOAD env
 	fmt.Println("* Loading env variables from .env...")
 	err := godotenv.Load(".env")
@@ -112,23 +116,17 @@ func main() {
 
 	fmt.Println("* Getting block ranges for spec versions...")
 	t := time.Now()
-	var wg sync.WaitGroup
 	//start from 1 because we know that for spec version 0 the first block is 0
 	for i := 1; i < specLen; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			blockNum, err := specVClient.getFirstBlockForSpecVersion(specVClient.knownSpecVersions[idx], 0, lastBlock)
-			if err != nil {
-				fmt.Println("Failed getting first block for Spec Version:", specVClient.knownSpecVersions[idx])
-				return
-			}
-			specList[idx].First = blockNum
-			specList[idx-1].Last = blockNum - 1
-			fmt.Println("Spec version", specVClient.knownSpecVersions[idx], "first block is", blockNum)
-		}(i)
+		blockNum, err := specVClient.getFirstBlockForSpecVersion(specVClient.knownSpecVersions[i], specList[i-1].First, lastBlock)
+		if err != nil {
+			fmt.Println("Failed getting first block for Spec Version:", specVClient.knownSpecVersions[i])
+			return
+		}
+		specList[i].First = blockNum
+		specList[i-1].Last = blockNum - 1
+		fmt.Println("Spec version", specVClient.knownSpecVersions[i], "first block is", blockNum)
 	}
-	wg.Wait()
 	fmt.Println("Finished getting block ranges for spec versions in", time.Now().Sub(t))
 
 	fmt.Println("* Writing ranges to file", svRangeFile)
@@ -162,6 +160,45 @@ func main() {
 	}
 	wg.Wait()
 	fmt.Println("Finished downloading metadata")
+
+	fmt.Println("* Connecting to database...")
+	dbClient, err := db.CreatePostgresPool()
+	if err != nil {
+		fmt.Println("Error connecting to db:", err)
+		return
+	}
+	defer dbClient.Close()
+	fmt.Println("Successfuly connected to Postgres")
+
+	fmt.Println("* Starting Postgres spec version workers...")
+	workerNumString := os.Getenv("POSTGRES_SPEC_VERSION_WORKERS")
+	workerNum, err := strconv.Atoi(workerNumString)
+	if err != nil {
+		fmt.Println("Wrong worker number formating:", err)
+		return
+	}
+
+	var dbWg sync.WaitGroup
+	for i := 0; i < workerNum; i++ {
+		dbWg.Add(1)
+		go dbClient.SpecVersionsWorker(&dbWg)
+	}
+
+	fmt.Println("* Inserting spec versions in db...")
+	dbTime := time.Now()
+	for i := 0; i < specLen; i++ {
+		wg.Add(1)
+		go func(spec SpecVersionRange) {
+			defer wg.Done()
+			for j := spec.First; j <= spec.Last; j++ {
+				dbClient.WorkersChannels.SpecVersionsChannel <- &models.SpecVersion{Id: strconv.Itoa(spec.SpecVersion), BlockHeight: j}
+			}
+		}(specList[i])
+	}
+	wg.Wait()
+	close(dbClient.WorkersChannels.SpecVersionsChannel)
+	dbWg.Wait()
+	fmt.Println("Finished inserting", lastBlock, "records in", time.Now().Sub(dbTime))
 }
 
 func (svc *SpecVersionClient) init(endpoint string) error {
@@ -204,6 +241,12 @@ func (svc *SpecVersionClient) getFirstBlockForSpecVersion(specVersion int, start
 
 	for {
 		mid := (s + (e - 1)) / 2
+		// fmt.Println(s, e, mid) //dbg
+
+		if e == s {
+			return e, nil
+		}
+
 		if e-1 == s {
 			spec, err := svc.getSpecVersion(s)
 			if err != nil {
