@@ -79,41 +79,31 @@ func (pc *PostgresClient) Close() {
 }
 
 func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
-	writing := false
+	defer wg.Done()
+	maxBatch := 100000
 	counter := 0
-	exitLoop := false
-	used := false
-	query := `INSERT INTO events (id, module, event, block_height) VALUES `
-	for !exitLoop {
-		select {
-		case event, ok := <-pc.WorkersChannels.EventsChannel:
-			if ok {
-				query += fmt.Sprintf(`('%s', '%s', '%s', '%d'), `, event.Id, event.Module, event.Event, event.BlockHeight)
-				if counter < 700 {
-					counter++
-					used = true
-				} else {
-					writing = true
-					pc.InsertByQuery(query[:len(query)-2])
-					query = `INSERT INTO events (id, module, event, block_height) VALUES `
-					counter = 0
-					writing = false
-				}
-			}
-		default:
-			if counter != 0 && !writing {
-				writing = true
-				pc.InsertByQuery(query[:len(query)-2])
-				query = `INSERT INTO events (id, module, event, block_height) VALUES `
-				counter = 0
-				writing = false
-			} else if !writing && used {
-				// exitLoop = true
-			}
+	insertItems := [][]interface{}{}
+	for event := range pc.WorkersChannels.EventsChannel {
+		insertItems = append(insertItems, []interface{}{event.Id, event.Module, event.Event, event.BlockHeight})
+		counter++
+		if counter == maxBatch {
+			pc.Pool.CopyFrom(
+				context.Background(),
+				pgx.Identifier{"events"},
+				[]string{"id", "module", "event", "block_height"},
+				pgx.CopyFromRows(insertItems),
+			)
+			insertItems = nil
+			counter = 0
 		}
 	}
+	pc.Pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"events"},
+		[]string{"id", "module", "event", "block_height"},
+		pgx.CopyFromRows(insertItems),
+	)
 	log.Println("Exited EventsWorker...")
-	wg.Done()
 }
 
 func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
