@@ -66,7 +66,8 @@ func main() {
 	rc.StartProcessing(jobQueueBody, jobQueueHeader)
 
 	workersWG.Wait()
-	log.Println("[INFO] All the processing took: ", time.Since(t))
+
+	log.Println("[INFO] All the processing took:", time.Since(t))
 
 	// Closing all remaining items
 	postgresClient.Close()

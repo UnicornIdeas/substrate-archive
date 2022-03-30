@@ -120,7 +120,7 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("[INFO] Last available block - ", maxBlockHeight)
+	log.Println("[INFO] LAST BLOCK SYNCED -", maxBlockHeight)
 
 	preProcessChannel := make(chan int, 10000000)
 
@@ -129,10 +129,6 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	go rc.PreProcessWorker(&pWg, bq, hq, preProcessChannel)
 
 	// testBlockHeight := maxBlockHeight
-	// testBlockHeight := 198073
-	// testBlockHeight := 29259
-	// testBlockHeight := 287353
-	// testBlockHeight := 200866
 	testBlockHeight := 100000
 
 	for i := 0; i < testBlockHeight; i++ {
