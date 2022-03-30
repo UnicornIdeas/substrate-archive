@@ -14,7 +14,7 @@ Run alongside a Polkadot archive node to index all Events, SpecVersion, Extrinsi
  - [.env](https://github.com/UnicornIdeas/substrate-archive/blob/master/go-dictionary/example.env) file with proper configuration (the file should be named .env and located in the root directory of the project)
 
 
-# Install
+## Install
 
 The project was developed on linux and the following tutorial is for linux:
 
