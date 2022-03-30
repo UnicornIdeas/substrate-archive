@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"go-dictionary/db"
 	"go-dictionary/internal"
 	"go-dictionary/models"
 	"go-dictionary/utils"
@@ -28,6 +29,7 @@ type EventsClient struct {
 	httpRpc       string
 	eventsChan    chan *rpc.JsonRpcResult
 	specRanges    *utils.SpecVersionRangeList
+	dbClient      *db.PostgresClient
 }
 
 const (
@@ -51,7 +53,13 @@ func main() {
 	batchSize := os.Getenv("WS_EVENTS_BATCH_SIZE")
 	maxWsBatch, err = strconv.Atoi(batchSize)
 	if err != nil {
-		fmt.Println("Failed to load env WS_EVENTS_BATCH_SIZE:", err)
+		fmt.Println("Wrong format for env WS_EVENTS_BATCH_SIZE:", err)
+		return
+	}
+	eventsWorkers := os.Getenv("EVENTS_WORKERS")
+	evWorkersNum, err := strconv.Atoi(eventsWorkers)
+	if err != nil {
+		fmt.Println("Wrong format for env EVENTS_WORKERS:", err)
 		return
 	}
 
@@ -94,6 +102,20 @@ func main() {
 	types.RegCustomTypes(source.LoadTypeRegistry(c))
 	fmt.Println("Types registered successfuly for Polkadot")
 
+	fmt.Println("* Connecting to database...")
+	dbClient, err := db.CreatePostgresPool()
+	if err != nil {
+		fmt.Println("Error connecting to db:", err)
+		return
+	}
+	defer dbClient.Close()
+	fmt.Println("Successfuly connected to Postgres")
+
+	fmt.Println("* Starting database worker in a separate routine...")
+	var dbWg sync.WaitGroup
+	dbWg.Add(1)
+	go dbClient.EventsWorker(&dbWg)
+
 	evChan := make(chan *rpc.JsonRpcResult, 10000)
 
 	evClient := EventsClient{
@@ -102,9 +124,10 @@ func main() {
 		httpRpc:       rpcEndpoint,
 		eventsChan:    evChan,
 		specRanges:    &specVRanges,
+		dbClient:      &dbClient,
 	}
 
-	lastIndexedBlock = 10 //DBG
+	lastIndexedBlock = 300000 //DBG
 
 	var wg sync.WaitGroup
 	ch := make(chan *[]byte, 1000)
@@ -113,11 +136,13 @@ func main() {
 	wg.Add(2)
 	go evClient.readWs(&wg, lastIndexedBlock+1, syncChannel)
 	go evClient.sendMessage(&wg, lastIndexedBlock+1, ch, syncChannel)
-	wg.Add(1)
-	go func() {
-		evClient.processEvents(wg)
-		defer wg.Done()
-	}()
+	for i := 0; i < evWorkersNum; i++ {
+		wg.Add(1)
+		go func() {
+			evClient.processEvents(wg)
+			defer wg.Done()
+		}()
+	}
 
 	fmt.Println("* Getting raw events...")
 	for i := 0; i <= lastIndexedBlock; i++ {
@@ -131,6 +156,8 @@ func main() {
 	}
 
 	wg.Wait()
+	close(dbClient.WorkersChannels.EventsChannel)
+	dbWg.Wait()
 	fmt.Println(time.Now().Sub(t))
 }
 
@@ -193,7 +220,7 @@ func (ev *EventsClient) processEvents(wg sync.WaitGroup) {
 	defer wg.Done()
 
 	specsLen := len(*ev.specRanges)
-	// specV => option
+	// specV => option mapping
 	specVToDecoderOptions := make(map[int]types.ScaleDecoderOption, specsLen)
 	for _, specV := range *ev.specRanges {
 		specVToDecoderOptions[specV.SpecVersion] = types.ScaleDecoderOption{Metadata: specV.Meta}
@@ -209,19 +236,18 @@ func (ev *EventsClient) processEvents(wg sync.WaitGroup) {
 
 		blockSpecV := ev.specRanges.GetBlockSpecVersion(msg.Id)
 		option := specVToDecoderOptions[blockSpecV]
-		// fmt.Println(len(rawEvent))
 		e.Init(types.ScaleBytes{Data: utiles.HexToBytes(rawEvent)}, &option)
 		e.Process()
 		eventsArray := e.Value.([]interface{})
-		for _, ev := range eventsArray {
+		for _, evt := range eventsArray {
 			event := models.Event{
-				Id:          fmt.Sprintf("%d-%d", msg.Id, ev.(map[string]interface{})["event_idx"].(int)),
-				Module:      strings.ToLower(ev.(map[string]interface{})["module_id"].(string)),
-				Event:       ev.(map[string]interface{})["event_id"].(string),
+				Id:          fmt.Sprintf("%d-%d", msg.Id, evt.(map[string]interface{})["event_idx"].(int)),
+				Module:      strings.ToLower(evt.(map[string]interface{})["module_id"].(string)),
+				Event:       evt.(map[string]interface{})["event_id"].(string),
 				BlockHeight: msg.Id,
 			}
 
-			fmt.Println(event)
+			ev.dbClient.WorkersChannels.EventsChannel <- &event
 		}
 	}
 }
