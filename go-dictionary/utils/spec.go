@@ -65,9 +65,15 @@ func (s SpecVersionRangeList) GetBlockSpecVersion(blockHeight int) int {
 }
 
 func (s SpecVersionRangeList) GetBlockSpecVersionAndInstant(blockHeight int) (int, *metadata.Instant) {
-	for _, spec := range s {
+	if blockHeight == 0 {
+		return 0, nil
+	}
+	for idx, spec := range s {
+		if blockHeight == spec.First {
+			return s[idx-1].SpecVersion, s[idx-1].Instant
+		}
 		//check only last version as the spec versions are in ascending order
-		if blockHeight < spec.Last {
+		if blockHeight <= spec.Last {
 			return spec.SpecVersion, spec.Instant
 		}
 	}
