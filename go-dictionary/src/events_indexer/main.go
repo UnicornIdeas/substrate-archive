@@ -127,7 +127,7 @@ func main() {
 		dbClient:      &dbClient,
 	}
 
-	lastIndexedBlock = 300000 //DBG
+	lastIndexedBlock = 500000 //DBG
 
 	var wg sync.WaitGroup
 	ch := make(chan *[]byte, 1000)
