@@ -71,7 +71,7 @@ func main() {
 	go postgresClient.ExtrinsicsWorker(&workersWG)
 
 	t := time.Now()
-	rc.StartProcessing(jobQueueBody, jobQueueHeader)
+	rc.StartProcessing(jobQueueBody, jobQueueHeader, specVRanges[len(specVRanges)-1].Last)
 
 	workersWG.Wait()
 
