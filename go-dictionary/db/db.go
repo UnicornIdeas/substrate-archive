@@ -96,6 +96,8 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 			)
 			if err != nil {
 				log.Println("[ERR]", err, "- could not insert items for events with CopyFrom!")
+			} else {
+				log.Println("[INFO] Inserted 100k events")
 			}
 			insertItems = nil
 			counter = 0
@@ -109,6 +111,8 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 	)
 	if err != nil {
 		log.Println("[ERR]", err, "- could not insert items for events with CopyFrom!")
+	} else {
+		log.Println("[INFO] Inserted remaining events")
 	}
 	log.Println("[-] Exited EventsWorker...")
 }
@@ -131,6 +135,8 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 			)
 			if err != nil {
 				log.Println("[ERR]", err, "- could not insert items for evmlogs with CopyFrom!")
+			} else {
+				log.Println("[INFO] Inserted 100k evm_logs")
 			}
 			insertItems = nil
 			counter = 0
@@ -144,6 +150,8 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 	)
 	if err != nil {
 		log.Println("[ERR]", err, "- could not insert items for evmlogs with CopyFrom!")
+	} else {
+		log.Println("[INFO] Inserted remaining evm_logs")
 	}
 	log.Println("[-] Exited EvmLogsWorker...")
 }
@@ -165,7 +173,9 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 				pgx.CopyFromRows(insertItems),
 			)
 			if err != nil {
-				log.Println("[ERR]", err, "- could not insert items for evmtransactions with CopyFrom!")
+				log.Println("[ERR]", err, "- could not insert items for evm_transactions with CopyFrom!")
+			} else {
+				log.Println("[INFO] Inserted 100k evm_transactions")
 			}
 			insertItems = nil
 			counter = 0
@@ -178,7 +188,9 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 		pgx.CopyFromRows(insertItems),
 	)
 	if err != nil {
-		log.Println("[ERR]", err, "- could not insert items for evmtransactions with CopyFrom!")
+		log.Println("[ERR]", err, "- could not insert items for evm_transactions with CopyFrom!")
+	} else {
+		log.Println("[INFO] Inserted the remaining evm_transactions")
 	}
 	log.Println("[-] Exited EvmTransactionsWorker...")
 }
@@ -201,6 +213,8 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 			)
 			if err != nil {
 				log.Println("[ERR]", err, "- could not insert items for extrinsics with CopyFrom!")
+			} else {
+				log.Println("[INFO] Inserted 100k extrinsics")
 			}
 			insertItems = nil
 			counter = 0
@@ -214,6 +228,8 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 	)
 	if err != nil {
 		log.Println("[ERR]", err, "- could not insert items for extrinsics with CopyFrom!")
+	} else {
+		log.Println("[INFO] Inserted remaining extrinsics")
 	}
 	log.Println("[-] Exited ExtrinsicsWorker...")
 }
