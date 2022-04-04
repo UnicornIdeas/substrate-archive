@@ -34,7 +34,6 @@ type EventsClient struct {
 
 const (
 	eventQuery = `{"id":%d,"method":"state_getStorage","params":["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7","%s"],"jsonrpc":"2.0"}`
-	blockHash  = "0x490cd542b4a40ad743183c7d1088a4fe7b1edf21e50c850b86f29e389f31c5c1"
 )
 
 var maxWsBatch int
@@ -127,8 +126,6 @@ func main() {
 		dbClient:      &dbClient,
 	}
 
-	lastIndexedBlock = 500000 //DBG
-
 	var wg sync.WaitGroup
 	ch := make(chan *[]byte, 1000)
 	syncChannel := make(chan bool)
@@ -149,6 +146,7 @@ func main() {
 		hash, err := evClient.getBlockHash(i)
 		if err != nil {
 			fmt.Println("Failed to get hash for block", i)
+			continue
 		}
 		msg := fmt.Sprintf(eventQuery, i, hash)
 		bMsg := []byte(msg)
@@ -217,16 +215,20 @@ func (ev *EventsClient) getBlockHash(height int) (string, error) {
 }
 
 func (ev *EventsClient) processEvents(wg sync.WaitGroup) {
-	defer wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Recovered from panic:", r)
+		}
+		wg.Done()
+	}()
 
 	specsLen := len(*ev.specRanges)
 	// specV => option mapping
 	specVToDecoderOptions := make(map[int]types.ScaleDecoderOption, specsLen)
 	for _, specV := range *ev.specRanges {
-		specVToDecoderOptions[specV.SpecVersion] = types.ScaleDecoderOption{Metadata: specV.Meta}
+		specVToDecoderOptions[specV.SpecVersion] = types.ScaleDecoderOption{Metadata: specV.Meta, Spec: specV.SpecVersion}
 	}
 
-	e := scalecodec.EventsDecoder{}
 	for msg := range ev.eventsChan {
 		rawEvent, err := msg.ToString()
 		if err != nil {
@@ -236,6 +238,7 @@ func (ev *EventsClient) processEvents(wg sync.WaitGroup) {
 
 		blockSpecV := ev.specRanges.GetBlockSpecVersion(msg.Id)
 		option := specVToDecoderOptions[blockSpecV]
+		e := scalecodec.EventsDecoder{}
 		e.Init(types.ScaleBytes{Data: utiles.HexToBytes(rawEvent)}, &option)
 		e.Process()
 		eventsArray := e.Value.([]interface{})
