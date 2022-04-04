@@ -88,22 +88,28 @@ func (pc *PostgresClient) EventsWorker(wg *sync.WaitGroup) {
 		insertItems = append(insertItems, []interface{}{event.Id, event.Module, event.Event, event.BlockHeight})
 		counter++
 		if counter == maxBatch {
-			pc.Pool.CopyFrom(
+			_, err := pc.Pool.CopyFrom(
 				context.Background(),
 				pgx.Identifier{"events"},
 				[]string{"id", "module", "event", "block_height"},
 				pgx.CopyFromRows(insertItems),
 			)
+			if err != nil {
+				log.Println("[ERR]", err, "- could not insert items for events with CopyFrom!")
+			}
 			insertItems = nil
 			counter = 0
 		}
 	}
-	pc.Pool.CopyFrom(
+	_, err := pc.Pool.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"events"},
 		[]string{"id", "module", "event", "block_height"},
 		pgx.CopyFromRows(insertItems),
 	)
+	if err != nil {
+		log.Println("[ERR]", err, "- could not insert items for events with CopyFrom!")
+	}
 	log.Println("[-] Exited EventsWorker...")
 }
 
@@ -117,22 +123,28 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 		insertItems = append(insertItems, []interface{}{evmLog.Id, evmLog.Address, evmLog.BlockHeight, evmLog.Topics0, evmLog.Topics1, evmLog.Topics2, evmLog.Topics3})
 		counter++
 		if counter == maxBatch {
-			pc.Pool.CopyFrom(
+			_, err := pc.Pool.CopyFrom(
 				context.Background(),
 				pgx.Identifier{"evm_logs"},
 				[]string{"id", "address", "block_height", "topics0", "topics1", "topics2", "topics3"},
 				pgx.CopyFromRows(insertItems),
 			)
+			if err != nil {
+				log.Println("[ERR]", err, "- could not insert items for evmlogs with CopyFrom!")
+			}
 			insertItems = nil
 			counter = 0
 		}
 	}
-	pc.Pool.CopyFrom(
+	_, err := pc.Pool.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"evm_logs"},
 		[]string{"id", "address", "block_height", "topics0", "topics1", "topics2", "topics3"},
 		pgx.CopyFromRows(insertItems),
 	)
+	if err != nil {
+		log.Println("[ERR]", err, "- could not insert items for evmlogs with CopyFrom!")
+	}
 	log.Println("[-] Exited EvmLogsWorker...")
 }
 
@@ -146,12 +158,15 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 		insertItems = append(insertItems, []interface{}{evmTransaction.Id, evmTransaction.TxHash, evmTransaction.From, evmTransaction.To, evmTransaction.Func, evmTransaction.BlockHeight, evmTransaction.Success})
 		counter++
 		if counter == maxBatch {
-			pc.Pool.CopyFrom(
+			_, err := pc.Pool.CopyFrom(
 				context.Background(),
 				pgx.Identifier{"evm_transactions"},
 				[]string{"id", "tx_hash", "from", "to", "func", "block_height", "success"},
 				pgx.CopyFromRows(insertItems),
 			)
+			if err != nil {
+				log.Println("[ERR]", err, "- could not insert items for evmtransactions with CopyFrom!")
+			}
 			insertItems = nil
 			counter = 0
 		}
@@ -163,7 +178,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 		pgx.CopyFromRows(insertItems),
 	)
 	if err != nil {
-		log.Println("[ERR]", err, "- could not insert items with CopyFrom!")
+		log.Println("[ERR]", err, "- could not insert items for evmtransactions with CopyFrom!")
 	}
 	log.Println("[-] Exited EvmTransactionsWorker...")
 }
@@ -178,22 +193,28 @@ func (pc *PostgresClient) ExtrinsicsWorker(wg *sync.WaitGroup) {
 		insertItems = append(insertItems, []interface{}{extrinsic.Id, extrinsic.TxHash, extrinsic.Module, extrinsic.Call, extrinsic.BlockHeight, extrinsic.Success, extrinsic.IsSigned})
 		counter++
 		if counter == maxBatch {
-			pc.Pool.CopyFrom(
+			_, err := pc.Pool.CopyFrom(
 				context.Background(),
 				pgx.Identifier{"extrinsics"},
 				[]string{"id", "tx_hash", "module", "call", "block_height", "success", "is_signed"},
 				pgx.CopyFromRows(insertItems),
 			)
+			if err != nil {
+				log.Println("[ERR]", err, "- could not insert items for extrinsics with CopyFrom!")
+			}
 			insertItems = nil
 			counter = 0
 		}
 	}
-	pc.Pool.CopyFrom(
+	_, err := pc.Pool.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"extrinsics"},
 		[]string{"id", "tx_hash", "module", "call", "block_height", "success", "is_signed"},
 		pgx.CopyFromRows(insertItems),
 	)
+	if err != nil {
+		log.Println("[ERR]", err, "- could not insert items for extrinsics with CopyFrom!")
+	}
 	log.Println("[-] Exited ExtrinsicsWorker...")
 }
 
