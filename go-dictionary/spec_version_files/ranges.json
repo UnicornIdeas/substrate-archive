@@ -97,21 +97,6 @@
  {
   "spec_version": 26,
   "first": 2436698,
-  "last": 3613563
- },
- {
-  "spec_version": 27,
-  "first": 3613564,
-  "last": 3899546
- },
- {
-  "spec_version": 28,
-  "first": 3899547,
-  "last": 4345766
- },
- {
-  "spec_version": 29,
-  "first": 4345767,
-  "last": 4345857
+  "last": 2908672
  }
 ]
