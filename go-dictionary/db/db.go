@@ -163,7 +163,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 		pgx.CopyFromRows(insertItems),
 	)
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not insert items with CopyFrom!")
 	}
 	log.Println("[-] Exited EvmTransactionsWorker...")
 }
@@ -229,7 +229,7 @@ func (pc *PostgresClient) SpecVersionsWorker(wg *sync.WaitGroup) {
 func (pc *PostgresClient) InsertByQuery(query string) error {
 	_, err := pc.Pool.Exec(context.Background(), query)
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not insert to postgres by query!")
 		return err
 	}
 	return nil

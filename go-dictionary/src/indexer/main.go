@@ -20,7 +20,7 @@ func main() {
 	log.Println("[+] Loading .env variables!")
 	err := godotenv.Load(".env")
 	if err != nil {
-		fmt.Println("Failed to load environment variables:", err)
+		log.Println("[ERR] Failed to load environment variables:", err)
 		return
 	}
 	rocksDbPath := os.Getenv("ROCKSDB_PATH")
@@ -28,14 +28,14 @@ func main() {
 	// Postgres database initialize
 	postgresClient, err := db.CreatePostgresPool()
 	if err != nil {
-		log.Println("PostgresClient Error:", err)
+		log.Println("[ERR]", err, "- could not initialize postgres!")
 	}
 
 	//LOAD ranges for spec versions
 	log.Println("[+] Loading config info from files...")
 	specVRanges, err := utils.GetSpecVersionsFromFile()
 	if err != nil {
-		fmt.Println("Failed to load configs from file")
+		log.Println("[ERR] Failed to load configs from file!")
 		return
 	}
 
@@ -50,13 +50,13 @@ func main() {
 	log.Println("[+] Initializing Rocksdb")
 	rc, err := internal.OpenRocksdb(rocksDbPath)
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not open Rocksdb!")
 	}
 	//Register decoder custom types
 	log.Println("[+] Registering decoder custom types...")
 	c, err := ioutil.ReadFile(fmt.Sprintf("%s.json", "./network/polkadot"))
 	if err != nil {
-		fmt.Println("Failed to register types for network Polkadot:", err)
+		log.Println("[ERR] Failed to register types for network Polkadot:", err)
 		return
 	}
 	types.RegCustomTypes(source.LoadTypeRegistry(c))

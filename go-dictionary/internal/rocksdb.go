@@ -115,7 +115,7 @@ func (rc *RockClient) GetLastBlockSynced() (int, error) {
 func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	maxBlockHeight, err := rc.GetLastBlockSynced()
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not get the last block synced!")
 	}
 	log.Println("[INFO] LAST BLOCK SYNCED -", maxBlockHeight)
 
@@ -140,7 +140,7 @@ func (rc *RockClient) GetHeaderRaw(wg *sync.WaitGroup, headerJob *HeaderJob, hq 
 	defer wg.Done()
 	header, err := rc.GetHeaderForBlockLookupKey(key)
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not get the header for block lookup key!")
 	}
 	headerJob.BlockHeader = header
 	hq.Submit(headerJob)
@@ -150,7 +150,7 @@ func (rc *RockClient) GetBodyRaw(wg *sync.WaitGroup, bodyJob *BodyJob, bq *JobQu
 	defer wg.Done()
 	body, err := rc.GetBodyForBlockLookupKey(key)
 	if err != nil {
-		log.Println(err)
+		log.Println("[ERR]", err, "- could not get the body for block lookup key!!")
 	}
 	bodyJob.BlockBody = body
 	bq.Submit(bodyJob)
@@ -169,7 +169,7 @@ func (rc *RockClient) PreProcessWorker(wg *sync.WaitGroup, bq *JobQueueBody, hq 
 
 		key, err := rc.GetLookupKeyForBlockHeight(blockHeight)
 		if err != nil {
-			log.Println(err)
+			log.Println("[ERR]", err, blockHeight, "- could not get the lookup key!")
 		}
 		bodyJob.BlockLookupKey = key
 		headerJob.BlockLookupKey = key

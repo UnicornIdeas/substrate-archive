@@ -149,7 +149,7 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan *models.Extrinsic, evmTra
 
 		decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
 		if err != nil {
-			log.Println(err)
+			log.Println("[ERR]", err, job.BlockHeight, "- could not decode extrinsic!")
 		}
 
 		transactionId := 0
