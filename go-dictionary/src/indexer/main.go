@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		log.Println("[ERR]", err, "- could not initialize postgres!")
 	}
-
+	defer postgresClient.Pool.Close()
 	//LOAD ranges for spec versions
 	log.Println("[+] Loading config info from files...")
 	specVRanges, err := utils.GetSpecVersionsFromFile()
@@ -71,14 +71,11 @@ func main() {
 	go postgresClient.ExtrinsicsWorker(&workersWG)
 
 	t := time.Now()
-	rc.StartProcessing(jobQueueBody, jobQueueHeader, specVRanges[len(specVRanges)-1].Last)
+	rc.StartProcessing(jobQueueBody, jobQueueHeader, 1650000)
+	// rc.StartProcessing(jobQueueBody, jobQueueHeader, specVRanges[len(specVRanges)-1].Last)
 
 	workersWG.Wait()
 
 	log.Println("[INFO] All the processing took:", time.Since(t))
-
-	// Closing all remaining items
-	postgresClient.Close()
-
 	log.Println("[-] Exiting program...")
 }

@@ -123,7 +123,7 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader, last
 
 	testBlockHeight := lastBlockSynced
 
-	for i := 0; i < testBlockHeight; i++ {
+	for i := 1600000; i < testBlockHeight; i++ {
 		preProcessChannel <- i
 	}
 	close(preProcessChannel)
