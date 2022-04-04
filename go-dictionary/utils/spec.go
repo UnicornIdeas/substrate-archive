@@ -49,9 +49,15 @@ func GetSpecVersionsFromFile() (SpecVersionRangeList, error) {
 }
 
 func (s SpecVersionRangeList) GetBlockSpecVersion(blockHeight int) int {
-	for _, spec := range s {
+	if blockHeight == 0 {
+		return 0
+	}
+	for idx, spec := range s {
+		if blockHeight == spec.First {
+			return s[idx-1].SpecVersion
+		}
 		//check only last version as the spec versions are in ascending order
-		if blockHeight < spec.Last {
+		if blockHeight <= spec.Last {
 			return spec.SpecVersion
 		}
 	}

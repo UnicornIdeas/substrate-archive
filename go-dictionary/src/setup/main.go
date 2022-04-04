@@ -170,35 +170,24 @@ func main() {
 	defer dbClient.Close()
 	fmt.Println("Successfuly connected to Postgres")
 
-	fmt.Println("* Starting Postgres spec version workers...")
-	workerNumString := os.Getenv("POSTGRES_SPEC_VERSION_WORKERS")
-	workerNum, err := strconv.Atoi(workerNumString)
+	fmt.Println("* Starting Postgres spec version worker...")
 	if err != nil {
 		fmt.Println("Wrong worker number formating:", err)
 		return
 	}
 
 	var dbWg sync.WaitGroup
-	for i := 0; i < workerNum; i++ {
-		dbWg.Add(1)
-		go dbClient.SpecVersionsWorker(&dbWg)
-	}
+	dbWg.Add(1)
+	go dbClient.SpecVersionsWorker(&dbWg)
 
 	fmt.Println("* Inserting spec versions in db...")
 	dbTime := time.Now()
-	for i := 0; i < specLen; i++ {
-		wg.Add(1)
-		go func(spec SpecVersionRange) {
-			defer wg.Done()
-			for j := spec.First; j <= spec.Last; j++ {
-				dbClient.WorkersChannels.SpecVersionsChannel <- &models.SpecVersion{Id: strconv.Itoa(spec.SpecVersion), BlockHeight: j}
-			}
-		}(specList[i])
+	for _, spec := range specList {
+		dbClient.WorkersChannels.SpecVersionsChannel <- &models.SpecVersion{Id: strconv.Itoa(spec.SpecVersion), BlockHeight: spec.First + 1} //+1 because the first block still uses the old specV
 	}
-	wg.Wait()
 	close(dbClient.WorkersChannels.SpecVersionsChannel)
 	dbWg.Wait()
-	fmt.Println("Finished inserting", lastBlock, "records in", time.Now().Sub(dbTime))
+	fmt.Println("Finished inserting", specLen, "records in", time.Now().Sub(dbTime))
 }
 
 func (svc *SpecVersionClient) init(endpoint string) error {
@@ -241,7 +230,6 @@ func (svc *SpecVersionClient) getFirstBlockForSpecVersion(specVersion int, start
 
 	for {
 		mid := (s + (e - 1)) / 2
-		// fmt.Println(s, e, mid) //dbg
 
 		if e == s {
 			return e, nil
