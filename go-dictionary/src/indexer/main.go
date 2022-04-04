@@ -5,10 +5,13 @@ import (
 	"go-dictionary/db"
 	"go-dictionary/internal"
 	"go-dictionary/utils"
+	"io/ioutil"
 	"log"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/itering/scale.go/source"
 	"github.com/itering/scale.go/types"
 	"github.com/joho/godotenv"
 )
@@ -20,7 +23,7 @@ func main() {
 		fmt.Println("Failed to load environment variables:", err)
 		return
 	}
-
+	rocksDbPath := os.Getenv("ROCKSDB_PATH")
 	log.Println("[+] Initializing Postgres Database Pool")
 	// Postgres database initialize
 	postgresClient, err := db.CreatePostgresPool()
@@ -45,13 +48,18 @@ func main() {
 	jobQueueBody.Start()
 
 	log.Println("[+] Initializing Rocksdb")
-	rc, err := internal.OpenRocksdb("/mnt/hgfs/ArchivedRocksdb/chains/polkadot/db/full")
+	rc, err := internal.OpenRocksdb(rocksDbPath)
 	if err != nil {
 		log.Println(err)
 	}
-
-	headerDecoder := types.ScaleDecoder{}
-	headerDecoder.ProcessAndUpdateData("Header")
+	//Register decoder custom types
+	log.Println("[+] Registering decoder custom types...")
+	c, err := ioutil.ReadFile(fmt.Sprintf("%s.json", "./network/polkadot"))
+	if err != nil {
+		fmt.Println("Failed to register types for network Polkadot:", err)
+		return
+	}
+	types.RegCustomTypes(source.LoadTypeRegistry(c))
 
 	// Postgres Insert Workers
 	var workersWG sync.WaitGroup

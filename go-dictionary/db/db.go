@@ -156,13 +156,15 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 			counter = 0
 		}
 	}
-	log.Println(insertItems)
-	pc.Pool.CopyFrom(
+	_, err := pc.Pool.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"evm_transactions"},
 		[]string{"id", "tx_hash", "from", "to", "func", "block_height", "success"},
 		pgx.CopyFromRows(insertItems),
 	)
+	if err != nil {
+		log.Println(err)
+	}
 	log.Println("[-] Exited EvmTransactionsWorker...")
 }
 

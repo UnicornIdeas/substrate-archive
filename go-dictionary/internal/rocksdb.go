@@ -58,8 +58,6 @@ func OpenRocksdb(path string) (RockClient, error) {
 		"/tmp/secondary",
 		cf,
 		cfOpts,
-		// []string{"default", "col0", "col1", "col2", "col3", "col4", "col5", "col6", "col7", "col8", "col9", "col10", "col11", "col12"},
-		// []*grocksdb.Options{opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts, opts},
 	)
 	if err != nil {
 		return RockClient{}, err
@@ -75,8 +73,7 @@ func OpenRocksdb(path string) (RockClient, error) {
 
 func (rc *RockClient) GetLookupKeyForBlockHeight(blockHeight int) ([]byte, error) {
 	blockKey := BlockHeightToKey(blockHeight)
-	ro := grocksdb.NewDefaultReadOptions()
-	response, err := rc.db.GetCF(ro, rc.columnHandles[COL_KEY_LOOKUP], blockKey)
+	response, err := rc.db.GetCF(rc.ro, rc.columnHandles[COL_KEY_LOOKUP], blockKey)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -128,7 +125,8 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader) {
 	pWg.Add(1)
 	go rc.PreProcessWorker(&pWg, bq, hq, preProcessChannel)
 
-	testBlockHeight := maxBlockHeight
+	// testBlockHeight := maxBlockHeight
+	testBlockHeight := 500000
 
 	for i := 0; i < testBlockHeight; i++ {
 		preProcessChannel <- i

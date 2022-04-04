@@ -117,11 +117,12 @@ func (job *HeaderJob) ProcessHeader(evmLogsChannel chan *models.EvmLog) {
 	headerDecoder.Init(types.ScaleBytes{Data: job.BlockHeader}, nil)
 	decodedHeader := headerDecoder.ProcessAndUpdateData("Header")
 
-	logs := decodedHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{})
-	for i := range logs {
-		evmLog := models.EvmLog{}
-		evmLog.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
-		evmLog.BlockHeight = job.BlockHeight
-		evmLogsChannel <- &evmLog
+	if logs, ok := decodedHeader.(map[string]interface{})["digest"].(map[string]interface{})["logs"].([]interface{}); ok {
+		for i := range logs {
+			evmLog := models.EvmLog{}
+			evmLog.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(i)
+			evmLog.BlockHeight = job.BlockHeight
+			evmLogsChannel <- &evmLog
+		}
 	}
 }
