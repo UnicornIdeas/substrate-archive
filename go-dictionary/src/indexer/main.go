@@ -30,7 +30,6 @@ func main() {
 	if err != nil {
 		log.Println("[ERR]", err, "- could not initialize postgres!")
 	}
-	defer postgresClient.Pool.Close()
 	//LOAD ranges for spec versions
 	log.Println("[+] Loading config info from files...")
 	specVRanges, err := utils.GetSpecVersionsFromFile()
@@ -76,5 +75,7 @@ func main() {
 	workersWG.Wait()
 
 	log.Println("[INFO] All the processing took:", time.Since(t))
+	postgresClient.Pool.Close()
+
 	log.Println("[-] Exiting program...")
 }

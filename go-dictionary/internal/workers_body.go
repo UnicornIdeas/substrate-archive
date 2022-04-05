@@ -22,6 +22,7 @@ type BodyJob struct {
 	BlockHash      string
 	BlockLookupKey []byte
 	BlockBody      []byte
+	TransactionID  int
 }
 
 // WorkerBody - the worker threads that actually process the jobs for Body data
@@ -137,19 +138,19 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan *models.Extrinsic, evmTra
 	bodyDecoder := types.ScaleDecoder{}
 	bodyDecoder.Init(types.ScaleBytes{Data: job.BlockBody}, nil)
 	decodedBody := bodyDecoder.ProcessAndUpdateData("Vec<Bytes>")
+
 	if bodyList, ok := decodedBody.([]interface{}); ok {
 		extrinsics := []string{}
 		for bodyPos := range bodyList {
 			if bl, ok := bodyList[bodyPos].(string); ok {
 				extrinsics = append(extrinsics, bl)
-
 			}
 		}
 		specV, instant := specVersionList.GetBlockSpecVersionAndInstant(job.BlockHeight)
 
 		decodedExtrinsics, err := substrate.DecodeExtrinsic(extrinsics, instant, specV)
 		if err == nil {
-			transactionId := 0
+			job.TransactionID = 0
 			for decodedExtrinsicPos := range decodedExtrinsics {
 				extrinsicsResult := models.Extrinsic{}
 				extrinsicsResult.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(decodedExtrinsicPos)
@@ -169,25 +170,12 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan *models.Extrinsic, evmTra
 					extrinsicsResult.IsSigned = true
 				}
 				extrinsicsChannel <- &extrinsicsResult
-				if extrinsicsResult.Module == "utility" {
-					if transactions, ok := decodedExtrinsics[decodedExtrinsicPos]["params"].([]scalecodec.ExtrinsicParam); ok {
-						tempTransactions, tid := job.ProcessUtilityTransaction(transactions, extrinsicsResult.TxHash, transactionId)
-						transactionId += tid
-						for i := range tempTransactions {
-							evmTransactionsChannel <- &tempTransactions[i]
-						}
-					}
-				} else if transactions, ok := decodedExtrinsics[decodedExtrinsicPos]["params"].([]scalecodec.ExtrinsicParam); ok {
-					for transactionPos := range transactions {
-						if transactions[transactionPos].Name == "call" {
-							if value, ok := transactions[transactionPos].Value.(map[string]interface{}); ok {
-								if value["call_module"] == "Balances" {
-									transaction := job.ProcessBalancesTransaction(transactions[transactionPos], extrinsicsResult.TxHash, transactionId)
-									transactionId++
-									evmTransactionsChannel <- &transaction
-								}
-							}
-						}
+
+				if transactions, ok := decodedExtrinsics[decodedExtrinsicPos]["params"].([]scalecodec.ExtrinsicParam); ok {
+					if extrinsicsResult.Module == "utility" {
+						job.ProcessUtilityTransaction(transactions, extrinsicsResult.TxHash, evmTransactionsChannel)
+					} else if extrinsicsResult.Module == "sudo" {
+						job.ProcessBalances(transactions, extrinsicsResult.TxHash, evmTransactionsChannel)
 					}
 				}
 			}
@@ -197,10 +185,23 @@ func (job *BodyJob) ProcessBody(extrinsicsChannel chan *models.Extrinsic, evmTra
 	}
 }
 
-func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicParam, txHash string, transactionId int) models.EvmTransaction {
+func (job *BodyJob) ProcessBalances(transactions []scalecodec.ExtrinsicParam, txHash string, evmTransactionsChannel chan *models.EvmTransaction) {
+	for transactionPos := range transactions {
+		if transactions[transactionPos].Name == "call" {
+			if value, ok := transactions[transactionPos].Value.(map[string]interface{}); ok {
+				if callModule, ok := value["call_module"].(string); ok && callModule == "Balances" {
+					temporaryTransaction := job.ProcessBalancesTransaction(transactions[transactionPos], txHash)
+					evmTransactionsChannel <- &temporaryTransaction
+				}
+			}
+		}
+	}
+}
+
+func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicParam, txHash string) models.EvmTransaction {
 	tempTransaction := models.EvmTransaction{}
 	if transactionData, ok := transaction.Value.(map[string]interface{}); ok {
-		tempTransaction.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(transactionId)
+		tempTransaction.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(job.TransactionID)
 		tempTransaction.TxHash = txHash
 		if params, ok := transactionData["params"].([]types.ExtrinsicParam); ok {
 			for paramPos := range params {
@@ -222,13 +223,40 @@ func (job *BodyJob) ProcessBalancesTransaction(transaction scalecodec.ExtrinsicP
 			tempTransaction.Success = true
 		}
 	}
-
+	job.TransactionID++
 	return tempTransaction
 }
 
-func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.ExtrinsicParam, txHash string, transactionId int) ([]models.EvmTransaction, int) {
-	tempTransactions := []models.EvmTransaction{}
-	tid := transactionId
+func (job *BodyJob) ExtractInfoFromBalances(transactionDataRaw interface{}, txHash string) models.EvmTransaction {
+	tempTransaction := models.EvmTransaction{}
+	if transactionData, ok := transactionDataRaw.(map[string]interface{}); ok {
+		if transactionModule, ok := transactionData["call_module"].(string); ok && transactionModule == "Balances" {
+			tempTransaction.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(job.TransactionID)
+			tempTransaction.TxHash = txHash
+			tempTransaction.Func = transactionModule
+			if transactionParams, ok := transactionData["params"].([]types.ExtrinsicParam); ok {
+				for tpPos := range transactionParams {
+					if transactionParams[tpPos].Name == "source" {
+						if source, ok := transactionParams[tpPos].Value.(string); ok {
+							tempTransaction.From = EncodeAddressId(source)
+						}
+					}
+					if transactionParams[tpPos].Name == "dest" {
+						if dest, ok := transactionParams[tpPos].Value.(string); ok {
+							tempTransaction.To = EncodeAddressId(dest)
+						}
+					}
+					tempTransaction.BlockHeight = job.BlockHeight
+					tempTransaction.Success = true
+				}
+			}
+		}
+	}
+	job.TransactionID++
+	return tempTransaction
+}
+
+func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.ExtrinsicParam, txHash string, evmTransactionsChannel chan *models.EvmTransaction) {
 	for transactionPos := range transactions {
 		if transactions[transactionPos].Name == "calls" {
 			if transactionValue, ok := transactions[transactionPos].Value.([]interface{}); ok {
@@ -236,37 +264,9 @@ func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.Extrinsi
 					if params, ok := transactionValue[tvPos].(map[string]interface{})["params"].([]types.ExtrinsicParam); ok {
 						for paramPos := range params {
 							if params[paramPos].Name == "call" {
-								tempTransaction := models.EvmTransaction{}
-								if transactionData, ok := params[paramPos].Value.(map[string]interface{}); ok {
-									tempTransaction.Id = strconv.Itoa(job.BlockHeight) + "-" + strconv.Itoa(tid)
-									tempTransaction.TxHash = txHash
-									if transactionParams, ok := transactionData["params"].([]types.ExtrinsicParam); ok {
-										for tpPos := range transactionParams {
-											if callData, ok := transactionParams[tpPos].Value.(map[string]interface{}); ok {
-												callParams := callData["params"].([]types.ExtrinsicParam)
-												for callParamPos := range callParams {
-													if callParams[callParamPos].Name == "source" {
-														if source, ok := callParams[callParamPos].Value.(string); ok {
-															tempTransaction.From = EncodeAddressId(source)
-														}
-													}
-													if callParams[callParamPos].Name == "dest" {
-														if dest, ok := callParams[callParamPos].Value.(string); ok {
-															tempTransaction.To = EncodeAddressId(dest)
-														}
-													}
-												}
-												if CallModule, ok := callData["call_module"].(string); ok {
-													tempTransaction.Func = CallModule
-												}
-											}
-
-											tempTransaction.BlockHeight = job.BlockHeight
-											tempTransaction.Success = true
-											tid++
-											tempTransactions = append(tempTransactions, tempTransaction)
-										}
-									}
+								if transactionModule, ok := params[paramPos].Value.(map[string]interface{})["call_module"]; ok && transactionModule == "Balances" {
+									temporaryTransaction := job.ExtractInfoFromBalances(params[paramPos].Value, txHash)
+									evmTransactionsChannel <- &temporaryTransaction
 								}
 							}
 						}
@@ -275,5 +275,4 @@ func (job *BodyJob) ProcessUtilityTransaction(transactions []scalecodec.Extrinsi
 			}
 		}
 	}
-	return tempTransactions, tid
 }

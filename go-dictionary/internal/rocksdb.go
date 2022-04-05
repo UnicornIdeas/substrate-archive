@@ -121,9 +121,7 @@ func (rc *RockClient) StartProcessing(bq *JobQueueBody, hq *JobQueueHeader, last
 	pWg.Add(1)
 	go rc.PreProcessWorker(&pWg, bq, hq, preProcessChannel)
 
-	testBlockHeight := lastBlockSynced
-
-	for i := 0; i < testBlockHeight; i++ {
+	for i := 0; i < lastBlockSynced; i++ {
 		preProcessChannel <- i
 	}
 	close(preProcessChannel)

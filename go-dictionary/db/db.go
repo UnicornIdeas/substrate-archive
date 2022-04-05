@@ -159,7 +159,7 @@ func (pc *PostgresClient) EvmLogsWorker(wg *sync.WaitGroup) {
 func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 	log.Println("[+] Started EvmTransactionsWorker!")
 	defer wg.Done()
-	maxBatch := 100000
+	maxBatch := 100
 	counter := 0
 	insertItems := [][]interface{}{}
 	for evmTransaction := range pc.WorkersChannels.EvmTransactionsChannel {
@@ -175,7 +175,7 @@ func (pc *PostgresClient) EvmTransactionsWorker(wg *sync.WaitGroup) {
 			if err != nil {
 				log.Println("[ERR]", err, "- could not insert items for evm_transactions with CopyFrom!")
 			} else {
-				log.Println("[INFO] Inserted 100k evm_transactions")
+				log.Println("[INFO] Inserted 100 evm_transactions")
 			}
 			insertItems = nil
 			counter = 0
