@@ -8,8 +8,12 @@ import (
 	"os"
 	"sync"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/lib/pq"
 )
 
 type PostgresClient struct {
@@ -70,7 +74,22 @@ func (pc *PostgresClient) InitializePostgresDB() error {
 	if err != nil {
 		return err
 	}
+	err = p.Ping(context.Background())
+	if err != nil {
+		return err
+	}
 	pc.Pool = p
+
+	connMigrateString := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pwd, host, port, dbname)
+	m, err := migrate.New("file://migrations", connMigrateString)
+	if err != nil {
+		return err
+	}
+	err = m.Up()
+	if err != nil && err.Error() != "no change" {
+		log.Println("[INFO] Postgres migration up message:", err)
+	}
+
 	return nil
 }
 
